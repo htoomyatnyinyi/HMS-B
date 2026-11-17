@@ -1,5 +1,8 @@
 import { Elysia, t } from "elysia";
-import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
+import {
+  authMiddleware,
+  requireAuth,
+} from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
 import {
   createDispensation,
@@ -27,7 +30,9 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
       const auth = requireAuth(user, ["PHARMACIST", "ADMIN"]);
       if (!auth.authorized) {
         set.status = 403;
-        return errorResponse(auth.reason || "Forbidden: Pharmacist or Admin role required");
+        return errorResponse(
+          auth.reason || "Forbidden: Pharmacist or Admin role required",
+        );
       }
 
       try {
@@ -71,7 +76,9 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
       const auth = requireAuth(user, ["PHARMACIST", "NURSE", "ADMIN"]);
       if (!auth.authorized) {
         set.status = 403;
-        return errorResponse(auth.reason || "Forbidden: Only pharmacy staff can dispense");
+        return errorResponse(
+          auth.reason || "Forbidden: Only pharmacy staff can dispense",
+        );
       }
 
       try {
@@ -79,7 +86,10 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
           ...body,
           pharmacistName: user?.email,
         });
-        return successResponse(dispensation, "Medicines dispensed successfully");
+        return successResponse(
+          dispensation,
+          "Medicines dispensed successfully",
+        );
       } catch (err: any) {
         set.status = 400;
         return errorResponse(err.message || "Failed to dispense prescription");
@@ -109,7 +119,10 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
 
       try {
         const movement = await recordStockMovement(body);
-        return successResponse(movement, "Stock movement recorded successfully");
+        return successResponse(
+          movement,
+          "Stock movement recorded successfully",
+        );
       } catch (err: any) {
         set.status = 400;
         return errorResponse(err.message || "Failed to record stock movement");

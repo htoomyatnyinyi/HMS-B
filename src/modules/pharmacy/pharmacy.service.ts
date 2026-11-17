@@ -1,5 +1,9 @@
 import { prisma } from "../../infrastructure/database/prisma";
-import type { CreateDispensationInput, CreateMedicineInput, StockMovementInput } from "./pharmacy.types";
+import type {
+  CreateDispensationInput,
+  CreateMedicineInput,
+  StockMovementInput,
+} from "./pharmacy.types";
 
 export function generateDispensationNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
@@ -13,7 +17,9 @@ export async function listMedicines(pharmacyId?: string, search?: string) {
     let filtered = list.filter((m: any) => m.isActive);
 
     if (pharmacyId) {
-      filtered = filtered.filter((m: any) => String(m.pharmacyId) === String(pharmacyId));
+      filtered = filtered.filter(
+        (m: any) => String(m.pharmacyId) === String(pharmacyId),
+      );
     }
     if (search) {
       const q = search.toLowerCase();
@@ -53,7 +59,9 @@ export async function listInventory(locationId?: string) {
   try {
     const list = await prisma.orm.public.StockItem.all();
     if (locationId) {
-      return list.filter((item: any) => String(item.locationId) === String(locationId));
+      return list.filter(
+        (item: any) => String(item.locationId) === String(locationId),
+      );
     }
     return list;
   } catch {
@@ -89,7 +97,9 @@ export async function createDispensation(input: CreateDispensationInput) {
 
   // Update prescription status to COMPLETED
   try {
-    await prisma.orm.public.Prescription.where({ id: input.prescriptionId }).update({
+    await prisma.orm.public.Prescription.where({
+      id: input.prescriptionId,
+    }).update({
       status: "COMPLETED",
     });
   } catch {}
