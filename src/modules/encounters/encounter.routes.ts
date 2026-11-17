@@ -7,6 +7,10 @@ import {
   addObservation,
   finishEncounter,
   getEncounterById,
+  getEncounterDiagnoses,
+  getEncounterNotes,
+  getEncounterObservations,
+  getEncounterPrescriptions,
   listEncounters,
   startEncounter,
 } from "./encounter.service";
@@ -121,6 +125,15 @@ export const encounterRoutes = new Elysia({ prefix: "/encounters" })
       }),
     },
   )
+  .get("/:id/notes", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const notes = await getEncounterNotes(params.id);
+    return successResponse(notes);
+  })
   .post(
     "/:id/notes",
     async ({ params, body, user, set }) => {
@@ -158,6 +171,15 @@ export const encounterRoutes = new Elysia({ prefix: "/encounters" })
       }),
     },
   )
+  .get("/:id/diagnoses", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const diagnoses = await getEncounterDiagnoses(params.id);
+    return successResponse(diagnoses);
+  })
   .post(
     "/:id/diagnoses",
     async ({ params, body, user, set }) => {
@@ -190,6 +212,15 @@ export const encounterRoutes = new Elysia({ prefix: "/encounters" })
       }),
     },
   )
+  .get("/:id/observations", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const observations = await getEncounterObservations(params.id);
+    return successResponse(observations);
+  })
   .post(
     "/:id/observations",
     async ({ params, body, user, set }) => {
@@ -227,4 +258,13 @@ export const encounterRoutes = new Elysia({ prefix: "/encounters" })
         unit: t.Optional(t.String()),
       }),
     },
-  );
+  )
+  .get("/:id/prescriptions", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const prescriptions = await getEncounterPrescriptions(params.id);
+    return successResponse(prescriptions);
+  });

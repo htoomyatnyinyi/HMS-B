@@ -58,13 +58,18 @@ export async function getPatientById(id: string) {
     if (!patient || patient.isDeleted) return null;
 
     let allergies: any[] = [];
+    let conditions: any[] = [];
     try {
       allergies = await prisma.orm.public.PatientAllergy.where({ patientId: id }).all();
+    } catch {}
+    try {
+      conditions = await prisma.orm.public.Condition.where({ patientId: id }).all();
     } catch {}
 
     return {
       ...patient,
       allergiesList: allergies,
+      conditions,
     };
   } catch {
     return null;
@@ -134,6 +139,78 @@ export async function addPatientAllergy(input: CreateAllergyInput) {
 export async function getPatientAllergies(patientId: string) {
   try {
     return await prisma.orm.public.PatientAllergy.where({ patientId }).all();
+  } catch {
+    return [];
+  }
+}
+
+export async function addPatientCondition(patientId: string, data: { display: string; code?: string; clinicalStatus?: string; onsetAt?: string; notes?: string }) {
+  return await prisma.orm.public.Condition.create({
+    patientId,
+    display: data.display,
+    code: data.code,
+    clinicalStatus: data.clinicalStatus || "ACTIVE",
+    onsetAt: data.onsetAt ? new Date(data.onsetAt) : new Date(),
+    notes: data.notes,
+  });
+}
+
+export async function getPatientConditions(patientId: string) {
+  try {
+    return await prisma.orm.public.Condition.where({ patientId }).all();
+  } catch {
+    return [];
+  }
+}
+
+export async function getPatientEncounters(patientId: string) {
+  try {
+    return await prisma.orm.public.Encounter.where({ patientId }).all();
+  } catch {
+    return [];
+  }
+}
+
+export async function getPatientPrescriptions(patientId: string) {
+  try {
+    return await prisma.orm.public.Prescription.where({ patientId }).all();
+  } catch {
+    return [];
+  }
+}
+
+export async function getPatientAppointments(patientId: string) {
+  try {
+    return await prisma.orm.public.Appointment.where({ patientId }).all();
+  } catch {
+    return [];
+  }
+}
+
+export async function getPatientInvoices(patientId: string) {
+  try {
+    return await prisma.orm.public.Invoice.where({ patientId }).all();
+  } catch {
+    return [];
+  }
+}
+
+export async function addPatientDocument(patientId: string, data: { title: string; documentType?: any; fileName: string; storageKey: string; mimeType?: string; fileSize?: number }) {
+  return await prisma.orm.public.PatientDocument.create({
+    patientId,
+    title: data.title,
+    documentType: data.documentType || "OTHER",
+    fileName: data.fileName,
+    storageKey: data.storageKey,
+    mimeType: data.mimeType,
+    fileSize: data.fileSize,
+    createdAt: new Date(),
+  });
+}
+
+export async function getPatientDocuments(patientId: string) {
+  try {
+    return await prisma.orm.public.PatientDocument.where({ patientId }).all();
   } catch {
     return [];
   }

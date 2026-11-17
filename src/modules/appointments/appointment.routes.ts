@@ -4,7 +4,9 @@ import { errorResponse, successResponse } from "../../shared/utils/response";
 import {
   bookAppointment,
   getAppointmentById,
+  getDoctorSchedule,
   listAppointments,
+  rescheduleAppointment,
   updateAppointmentStatus,
 } from "./appointment.service";
 import type { AppointmentStatus } from "./appointment.types";
@@ -70,6 +72,16 @@ export const appointmentRoutes = new Elysia({ prefix: "/appointments" })
       }),
     },
   )
+  .get("/doctor/:doctorId/schedule", async ({ params, query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const schedule = await getDoctorSchedule(params.doctorId, query.date);
+    return successResponse(schedule);
+  })
   .get("/:id", async ({ params, user, set }) => {
     const auth = requireAuth(user);
     if (!auth.authorized) {
@@ -115,6 +127,31 @@ export const appointmentRoutes = new Elysia({ prefix: "/appointments" })
           t.Literal("NO_SHOW"),
         ]),
         notes: t.Optional(t.String()),
+      }),
+    },
+  )
+  .put(
+    "/:id/reschedule",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user);
+      if (!auth.authorized) {
+        set.status = 401;
+        return errorResponse(auth.reason || "Unauthorized");
+      }
+
+      try {
+        const rescheduled = await rescheduleAppointment(params.id, body.startAt, body.endAt, body.reason);
+        return successResponse(rescheduled, "Appointment rescheduled successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to reschedule appointment");
+      }
+    },
+    {
+      body: t.Object({
+        startAt: t.String(),
+        endAt: t.String(),
+        reason: t.Optional(t.String()),
       }),
     },
   );

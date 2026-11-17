@@ -15,6 +15,7 @@ import { patientRoutes } from "./modules/patients/patient.routes";
 import { pharmacyRoutes } from "./modules/pharmacy/pharmacy.routes";
 import { prescriptionRoutes } from "./modules/prescriptions/prescription.routes";
 import { hospitalRoutes, tenantRoutes } from "./modules/tenants/tenant.routes";
+import { surgeryRoutes } from "./modules/surgeries/surgery.routes";
 import swagger from "@elysiajs/swagger";
 
 // Modular Monolith API Gateway
@@ -30,7 +31,8 @@ const apiV1 = new Elysia({ prefix: "/api/v1" })
   .use(prescriptionRoutes)
   .use(pharmacyRoutes)
   .use(laboratoryRoutes)
-  .use(billingRoutes);
+  .use(billingRoutes)
+  .use(surgeryRoutes);
 
 const app = new Elysia()
   // Swagger Interactive API Docs

@@ -2,11 +2,17 @@ import { Elysia, t } from "elysia";
 import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
 import {
+  createInsuranceProvider,
   createInvoice,
   getInvoiceById,
+  listInsuranceClaims,
+  listInsuranceProviders,
   listInvoices,
+  listPayments,
   recordPayment,
+  refundPayment,
   submitInsuranceClaim,
+  voidInvoice,
 } from "./billing.service";
 import type { PaymentMethod } from "./billing.types";
 
@@ -81,6 +87,31 @@ export const billingRoutes = new Elysia({ prefix: "/billing" })
     }
     return successResponse(invoice);
   })
+  .patch("/invoices/:id/void", async ({ params, user, set }) => {
+    const auth = requireAuth(user, ["ACCOUNTANT", "ADMIN"]);
+    if (!auth.authorized) {
+      set.status = 403;
+      return errorResponse(auth.reason || "Forbidden");
+    }
+
+    try {
+      const voided = await voidInvoice(params.id);
+      return successResponse(voided, "Invoice voided successfully");
+    } catch (err: any) {
+      set.status = 400;
+      return errorResponse(err.message || "Failed to void invoice");
+    }
+  })
+  .get("/payments", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const payments = await listPayments(query.invoiceId);
+    return successResponse(payments);
+  })
   .post(
     "/invoices/:id/payments",
     async ({ params, body, user, set }) => {
@@ -123,6 +154,76 @@ export const billingRoutes = new Elysia({ prefix: "/billing" })
       }),
     },
   )
+  .post(
+    "/payments/:id/refund",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user, ["ACCOUNTANT", "ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const refund = await refundPayment(params.id, body.amount, body.reason);
+        return successResponse(refund, "Refund issued successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to issue refund");
+      }
+    },
+    {
+      body: t.Object({
+        amount: t.Number({ minimum: 0.01 }),
+        reason: t.String({ minLength: 1 }),
+      }),
+    },
+  )
+  .get("/insurance-providers", async ({ user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const providers = await listInsuranceProviders();
+    return successResponse(providers);
+  })
+  .post(
+    "/insurance-providers",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["ACCOUNTANT", "ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const provider = await createInsuranceProvider(body);
+        return successResponse(provider, "Insurance provider created successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to create insurance provider");
+      }
+    },
+    {
+      body: t.Object({
+        name: t.String({ minLength: 1 }),
+        code: t.String({ minLength: 1 }),
+        phone: t.Optional(t.String()),
+        email: t.Optional(t.String({ format: "email" })),
+      }),
+    },
+  )
+  .get("/claims", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const claims = await listInsuranceClaims(query.providerId);
+    return successResponse(claims);
+  })
   .post(
     "/claims",
     async ({ body, user, set }) => {

@@ -50,6 +50,7 @@ export async function getEncounterById(id: string) {
     let notes: any[] = [];
     let diagnoses: any[] = [];
     let observations: any[] = [];
+    let prescriptions: any[] = [];
 
     try {
       notes = await prisma.orm.public.ClinicalNote.where({ encounterId: id }).all();
@@ -60,12 +61,16 @@ export async function getEncounterById(id: string) {
     try {
       observations = await prisma.orm.public.Observation.where({ encounterId: id }).all();
     } catch {}
+    try {
+      prescriptions = await prisma.orm.public.Prescription.where({ encounterId: id }).all();
+    } catch {}
 
     return {
       ...encounter,
       notes,
       diagnoses,
       observations,
+      prescriptions,
     };
   } catch {
     return null;
@@ -114,6 +119,14 @@ export async function addClinicalNote(input: AddClinicalNoteInput) {
   });
 }
 
+export async function getEncounterNotes(encounterId: string) {
+  try {
+    return await prisma.orm.public.ClinicalNote.where({ encounterId }).all();
+  } catch {
+    return [];
+  }
+}
+
 export async function addEncounterDiagnosis(input: AddDiagnosisInput) {
   return await prisma.orm.public.EncounterDiagnosis.create({
     encounterId: input.encounterId,
@@ -123,6 +136,14 @@ export async function addEncounterDiagnosis(input: AddDiagnosisInput) {
     isPrimary: input.isPrimary ?? false,
     rank: 1,
   });
+}
+
+export async function getEncounterDiagnoses(encounterId: string) {
+  try {
+    return await prisma.orm.public.EncounterDiagnosis.where({ encounterId }).all();
+  } catch {
+    return [];
+  }
 }
 
 export async function addObservation(input: AddObservationInput) {
@@ -138,4 +159,20 @@ export async function addObservation(input: AddObservationInput) {
     status: "FINAL",
     effectiveAt: new Date(),
   });
+}
+
+export async function getEncounterObservations(encounterId: string) {
+  try {
+    return await prisma.orm.public.Observation.where({ encounterId }).all();
+  } catch {
+    return [];
+  }
+}
+
+export async function getEncounterPrescriptions(encounterId: string) {
+  try {
+    return await prisma.orm.public.Prescription.where({ encounterId }).all();
+  } catch {
+    return [];
+  }
 }

@@ -2,7 +2,17 @@ import { Elysia, t } from "elysia";
 import { config } from "../../config/env";
 import { authMiddleware, jwtPlugin, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
-import { authenticateUser, getUserProfile, registerUser } from "./auth.service";
+import {
+  assignUserRole,
+  authenticateUser,
+  createDoctorProfile,
+  getUserProfile,
+  listDoctors,
+  listRoles,
+  listUsers,
+  registerUser,
+  updateUser,
+} from "./auth.service";
 
 export const authRoutes = new Elysia({ prefix: "/auth" })
   .use(jwtPlugin)
@@ -26,6 +36,8 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         lastName: t.String({ minLength: 1 }),
         username: t.Optional(t.String()),
         phone: t.Optional(t.String()),
+        tenantId: t.Optional(t.String()),
+        hospitalId: t.Optional(t.String()),
         role: t.Optional(t.String()),
       }),
     },
@@ -79,4 +91,111 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
   })
   .post("/logout", async () => {
     return successResponse({ loggedOut: true }, "Logged out successfully");
-  });
+  })
+  .get("/users", async ({ query, user, set }) => {
+    const auth = requireAuth(user, ["ADMIN", "SUPER_ADMIN"]);
+    if (!auth.authorized) {
+      set.status = 403;
+      return errorResponse(auth.reason || "Forbidden");
+    }
+
+    const users = await listUsers(query.hospitalId || user?.hospitalId, query.search);
+    return successResponse(users);
+  })
+  .put(
+    "/users/:id",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "SUPER_ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const updated = await updateUser(params.id, body);
+        return successResponse(updated, "User updated successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to update user");
+      }
+    },
+    {
+      body: t.Object({
+        firstName: t.Optional(t.String()),
+        lastName: t.Optional(t.String()),
+        phone: t.Optional(t.String()),
+        status: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post(
+    "/users/:id/roles",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "SUPER_ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const assigned = await assignUserRole(params.id, body.roleId);
+        return successResponse(assigned, "Role assigned successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to assign role");
+      }
+    },
+    {
+      body: t.Object({
+        roleId: t.String({ minLength: 1 }),
+      }),
+    },
+  )
+  .get("/roles", async ({ user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const roles = await listRoles(user?.tenantId);
+    return successResponse(roles);
+  })
+  .get("/doctors", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const doctors = await listDoctors(query.hospitalId || user?.hospitalId);
+    return successResponse(doctors);
+  })
+  .post(
+    "/doctors",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "SUPER_ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const profile = await createDoctorProfile(body);
+        return successResponse(profile, "Doctor profile created successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to create doctor profile");
+      }
+    },
+    {
+      body: t.Object({
+        userId: t.String({ minLength: 1 }),
+        departmentId: t.Optional(t.String()),
+        employeeNo: t.String({ minLength: 1 }),
+        licenseNo: t.Optional(t.String()),
+        qualification: t.Optional(t.String()),
+        consultationFee: t.Optional(t.Number()),
+      }),
+    },
+  );

@@ -30,6 +30,10 @@ export async function getTenantById(id: string) {
   }
 }
 
+export async function updateTenant(id: string, data: Partial<CreateTenantInput>) {
+  return await prisma.orm.public.Tenant.where({ id }).update(data);
+}
+
 export async function listHospitals(tenantId?: string) {
   try {
     if (tenantId) {
@@ -38,6 +42,14 @@ export async function listHospitals(tenantId?: string) {
     return await prisma.orm.public.Hospital.all();
   } catch {
     return [];
+  }
+}
+
+export async function getHospitalById(id: string) {
+  try {
+    return await prisma.orm.public.Hospital.where({ id }).first();
+  } catch {
+    return null;
   }
 }
 
@@ -55,6 +67,10 @@ export async function createHospital(input: CreateHospitalInput) {
   });
 }
 
+export async function updateHospital(id: string, data: Partial<CreateHospitalInput>) {
+  return await prisma.orm.public.Hospital.where({ id }).update(data);
+}
+
 export async function listBranches(hospitalId: string) {
   try {
     return await prisma.orm.public.Branch.where({ hospitalId }).all();
@@ -63,10 +79,33 @@ export async function listBranches(hospitalId: string) {
   }
 }
 
+export async function createBranch(hospitalId: string, data: { code: string; name: string; phone?: string; email?: string }) {
+  return await prisma.orm.public.Branch.create({
+    hospitalId,
+    code: data.code.toUpperCase(),
+    name: data.name,
+    phone: data.phone,
+    email: data.email,
+    isActive: true,
+  });
+}
+
 export async function listDepartments(hospitalId: string) {
   try {
     return await prisma.orm.public.Department.where({ hospitalId }).all();
   } catch {
     return [];
   }
+}
+
+export async function createDepartment(hospitalId: string, data: { code: string; name: string; branchId?: string; parentId?: string; description?: string }) {
+  return await prisma.orm.public.Department.create({
+    hospitalId,
+    branchId: data.branchId,
+    parentId: data.parentId,
+    code: data.code.toUpperCase(),
+    name: data.name,
+    description: data.description,
+    isActive: true,
+  });
 }

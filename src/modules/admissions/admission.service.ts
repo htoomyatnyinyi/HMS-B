@@ -26,7 +26,16 @@ export async function listAdmissions(hospitalId?: string, status?: string) {
 
 export async function getAdmissionById(id: string) {
   try {
-    return await prisma.orm.public.Admission.where({ id }).first();
+    const admission = await prisma.orm.public.Admission.where({ id }).first();
+    if (!admission) return null;
+    let transfers: any[] = [];
+    try {
+      transfers = await prisma.orm.public.BedTransfer.where({ admissionId: id }).all();
+    } catch {}
+    return {
+      ...admission,
+      transfers,
+    };
   } catch {
     return null;
   }
@@ -57,25 +66,21 @@ export async function admitPatient(input: AdmitPatientInput) {
 }
 
 export async function transferBed(input: TransferBedInput) {
-  // Update old bed status
   if (input.fromBedId) {
     try {
       await prisma.orm.public.Bed.where({ id: input.fromBedId }).update({ status: "AVAILABLE" });
     } catch {}
   }
 
-  // Update new bed status
   try {
     await prisma.orm.public.Bed.where({ id: input.toBedId }).update({ status: "OCCUPIED" });
   } catch {}
 
-  // Update admission record
   await prisma.orm.public.Admission.where({ id: input.admissionId }).update({
     bedId: input.toBedId,
     status: "TRANSFERRED",
   });
 
-  // Record transfer log
   return await prisma.orm.public.BedTransfer.create({
     admissionId: input.admissionId,
     fromBedId: input.fromBedId,
@@ -112,4 +117,63 @@ export async function listWards(hospitalId?: string) {
   } catch {
     return [];
   }
+}
+
+export async function createWard(hospitalId: string, data: { code: string; name: string; wardType?: string; floor?: string }) {
+  return await prisma.orm.public.Ward.create({
+    hospitalId,
+    code: data.code.toUpperCase(),
+    name: data.name,
+    wardType: data.wardType,
+    floor: data.floor,
+  });
+}
+
+export async function listRooms(wardId: string) {
+  try {
+    return await prisma.orm.public.Room.where({ wardId }).all();
+  } catch {
+    return [];
+  }
+}
+
+export async function createRoom(hospitalId: string, wardId: string, data: { roomNo: string; roomType?: string }) {
+  return await prisma.orm.public.Room.create({
+    hospitalId,
+    wardId,
+    roomNo: data.roomNo,
+    roomType: data.roomType,
+  });
+}
+
+export async function listBeds(wardId?: string, status?: string) {
+  try {
+    const beds = await prisma.orm.public.Bed.all();
+    let filtered = beds;
+    if (wardId) {
+      filtered = filtered.filter((b: any) => String(b.wardId) === String(wardId));
+    }
+    if (status) {
+      filtered = filtered.filter((b: any) => b.status === status);
+    }
+    return filtered;
+  } catch {
+    return [];
+  }
+}
+
+export async function createBed(hospitalId: string, wardId: string, data: { bedNo: string; roomId?: string; bedType?: string; dailyRate?: number }) {
+  return await prisma.orm.public.Bed.create({
+    hospitalId,
+    wardId,
+    roomId: data.roomId,
+    bedNo: data.bedNo,
+    bedType: data.bedType,
+    dailyRate: data.dailyRate,
+    status: "AVAILABLE",
+  });
+}
+
+export async function updateBedStatus(bedId: string, status: "AVAILABLE" | "OCCUPIED" | "RESERVED" | "CLEANING" | "MAINTENANCE" | "BLOCKED") {
+  return await prisma.orm.public.Bed.where({ id: bedId }).update({ status });
 }

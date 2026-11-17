@@ -1,15 +1,21 @@
 import { Elysia, t } from "elysia";
-import {
-  authMiddleware,
-  requireAuth,
-} from "../../shared/middleware/auth.middleware";
+import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
 import {
   createDispensation,
   createMedicine,
+  createPurchaseOrder,
+  createSupplier,
+  getDispensationById,
+  getMedicineById,
+  listDispensations,
   listInventory,
   listMedicines,
+  listPurchaseOrders,
+  listSuppliers,
+  receivePurchaseOrder,
   recordStockMovement,
+  updateMedicine,
 } from "./pharmacy.service";
 
 export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
@@ -24,15 +30,27 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
     const medicines = await listMedicines(query.pharmacyId, query.search);
     return successResponse(medicines);
   })
+  .get("/medicines/:id", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const medicine = await getMedicineById(params.id);
+    if (!medicine) {
+      set.status = 404;
+      return errorResponse("Medicine not found");
+    }
+    return successResponse(medicine);
+  })
   .post(
     "/medicines",
     async ({ body, user, set }) => {
       const auth = requireAuth(user, ["PHARMACIST", "ADMIN"]);
       if (!auth.authorized) {
         set.status = 403;
-        return errorResponse(
-          auth.reason || "Forbidden: Pharmacist or Admin role required",
-        );
+        return errorResponse(auth.reason || "Forbidden: Pharmacist or Admin role required");
       }
 
       try {
@@ -60,6 +78,35 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
       }),
     },
   )
+  .put(
+    "/medicines/:id",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user, ["PHARMACIST", "ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const updated = await updateMedicine(params.id, body);
+        return successResponse(updated, "Medicine updated successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to update medicine");
+      }
+    },
+    {
+      body: t.Object({
+        name: t.Optional(t.String()),
+        genericName: t.Optional(t.String()),
+        strength: t.Optional(t.String()),
+        dosageForm: t.Optional(t.String()),
+        route: t.Optional(t.String()),
+        reorderLevel: t.Optional(t.Number()),
+        isControlled: t.Optional(t.Boolean()),
+      }),
+    },
+  )
   .get("/inventory", async ({ query, user, set }) => {
     const auth = requireAuth(user);
     if (!auth.authorized) {
@@ -70,15 +117,37 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
     const items = await listInventory(query.locationId);
     return successResponse(items);
   })
+  .get("/dispensations", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const list = await listDispensations(query.pharmacyId);
+    return successResponse(list);
+  })
+  .get("/dispensations/:id", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const dispensation = await getDispensationById(params.id);
+    if (!dispensation) {
+      set.status = 404;
+      return errorResponse("Dispensation not found");
+    }
+    return successResponse(dispensation);
+  })
   .post(
     "/dispensations",
     async ({ body, user, set }) => {
       const auth = requireAuth(user, ["PHARMACIST", "NURSE", "ADMIN"]);
       if (!auth.authorized) {
         set.status = 403;
-        return errorResponse(
-          auth.reason || "Forbidden: Only pharmacy staff can dispense",
-        );
+        return errorResponse(auth.reason || "Forbidden: Only pharmacy staff can dispense");
       }
 
       try {
@@ -86,10 +155,7 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
           ...body,
           pharmacistName: user?.email,
         });
-        return successResponse(
-          dispensation,
-          "Medicines dispensed successfully",
-        );
+        return successResponse(dispensation, "Medicines dispensed successfully");
       } catch (err: any) {
         set.status = 400;
         return errorResponse(err.message || "Failed to dispense prescription");
@@ -119,10 +185,7 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
 
       try {
         const movement = await recordStockMovement(body);
-        return successResponse(
-          movement,
-          "Stock movement recorded successfully",
-        );
+        return successResponse(movement, "Stock movement recorded successfully");
       } catch (err: any) {
         set.status = 400;
         return errorResponse(err.message || "Failed to record stock movement");
@@ -150,4 +213,104 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
         notes: t.Optional(t.String()),
       }),
     },
-  );
+  )
+  .get("/suppliers", async ({ user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const suppliers = await listSuppliers(user?.tenantId);
+    return successResponse(suppliers);
+  })
+  .post(
+    "/suppliers",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "PHARMACIST"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      const tenantId = body.tenantId || user?.tenantId;
+      if (!tenantId) {
+        set.status = 400;
+        return errorResponse("tenantId is required");
+      }
+
+      try {
+        const supplier = await createSupplier(tenantId, body);
+        return successResponse(supplier, "Supplier added successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to add supplier");
+      }
+    },
+    {
+      body: t.Object({
+        tenantId: t.Optional(t.String()),
+        code: t.String({ minLength: 1 }),
+        name: t.String({ minLength: 1 }),
+        contactName: t.Optional(t.String()),
+        phone: t.Optional(t.String()),
+        email: t.Optional(t.String({ format: "email" })),
+      }),
+    },
+  )
+  .get("/purchase-orders", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const orders = await listPurchaseOrders(query.supplierId);
+    return successResponse(orders);
+  })
+  .post(
+    "/purchase-orders",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "PHARMACIST"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const po = await createPurchaseOrder(body.supplierId, body.items);
+        return successResponse(po, "Purchase order submitted successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to create purchase order");
+      }
+    },
+    {
+      body: t.Object({
+        supplierId: t.String({ minLength: 1 }),
+        items: t.Array(
+          t.Object({
+            itemCode: t.String({ minLength: 1 }),
+            description: t.String({ minLength: 1 }),
+            quantity: t.Number({ minimum: 1 }),
+            unitCost: t.Number({ minimum: 0 }),
+          }),
+        ),
+      }),
+    },
+  )
+  .patch("/purchase-orders/:id/receive", async ({ params, user, set }) => {
+    const auth = requireAuth(user, ["ADMIN", "PHARMACIST"]);
+    if (!auth.authorized) {
+      set.status = 403;
+      return errorResponse(auth.reason || "Forbidden");
+    }
+
+    try {
+      const received = await receivePurchaseOrder(params.id);
+      return successResponse(received, "Purchase order received & inventory updated");
+    } catch (err: any) {
+      set.status = 400;
+      return errorResponse(err.message || "Failed to receive purchase order");
+    }
+  });

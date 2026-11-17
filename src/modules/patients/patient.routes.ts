@@ -3,10 +3,18 @@ import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middle
 import { errorResponse, paginatedResponse, successResponse } from "../../shared/utils/response";
 import {
   addPatientAllergy,
+  addPatientCondition,
+  addPatientDocument,
   createPatient,
   deletePatient,
   getPatientAllergies,
+  getPatientAppointments,
   getPatientById,
+  getPatientConditions,
+  getPatientDocuments,
+  getPatientEncounters,
+  getPatientInvoices,
+  getPatientPrescriptions,
   listPatients,
   updatePatient,
 } from "./patient.service";
@@ -180,6 +188,116 @@ export const patientRoutes = new Elysia({ prefix: "/patients" })
         reaction: t.Optional(t.String()),
         severity: t.Optional(t.String()),
         status: t.Optional(t.String()),
+      }),
+    },
+  )
+  .get("/:id/conditions", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const conditions = await getPatientConditions(params.id);
+    return successResponse(conditions);
+  })
+  .post(
+    "/:id/conditions",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user, ["DOCTOR", "NURSE", "ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const cond = await addPatientCondition(params.id, body);
+        return successResponse(cond, "Condition recorded successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to add condition");
+      }
+    },
+    {
+      body: t.Object({
+        display: t.String({ minLength: 1 }),
+        code: t.Optional(t.String()),
+        clinicalStatus: t.Optional(t.String()),
+        onsetAt: t.Optional(t.String()),
+        notes: t.Optional(t.String()),
+      }),
+    },
+  )
+  .get("/:id/encounters", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const encounters = await getPatientEncounters(params.id);
+    return successResponse(encounters);
+  })
+  .get("/:id/prescriptions", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const prescriptions = await getPatientPrescriptions(params.id);
+    return successResponse(prescriptions);
+  })
+  .get("/:id/appointments", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const appointments = await getPatientAppointments(params.id);
+    return successResponse(appointments);
+  })
+  .get("/:id/invoices", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const invoices = await getPatientInvoices(params.id);
+    return successResponse(invoices);
+  })
+  .get("/:id/documents", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+    const documents = await getPatientDocuments(params.id);
+    return successResponse(documents);
+  })
+  .post(
+    "/:id/documents",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user);
+      if (!auth.authorized) {
+        set.status = 401;
+        return errorResponse(auth.reason || "Unauthorized");
+      }
+
+      try {
+        const doc = await addPatientDocument(params.id, body);
+        return successResponse(doc, "Document uploaded successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to attach document");
+      }
+    },
+    {
+      body: t.Object({
+        title: t.String({ minLength: 1 }),
+        fileName: t.String({ minLength: 1 }),
+        storageKey: t.String({ minLength: 1 }),
+        documentType: t.Optional(t.String()),
+        mimeType: t.Optional(t.String()),
+        fileSize: t.Optional(t.Number()),
       }),
     },
   );

@@ -75,3 +75,25 @@ export async function updateAppointmentStatus(id: string, status: AppointmentSta
     notes: notes || undefined,
   });
 }
+
+export async function rescheduleAppointment(id: string, startAt: string, endAt: string, reason?: string) {
+  return await prisma.orm.public.Appointment.where({ id }).update({
+    startAt: new Date(startAt),
+    endAt: new Date(endAt),
+    notes: reason ? `Rescheduled: ${reason}` : undefined,
+    status: "BOOKED",
+  });
+}
+
+export async function getDoctorSchedule(doctorId: string, date?: string) {
+  try {
+    const list = await prisma.orm.public.Appointment.where({ doctorId }).all();
+    if (date) {
+      const target = date.slice(0, 10);
+      return list.filter((a: any) => new Date(a.startAt).toISOString().slice(0, 10) === target && a.status !== "CANCELLED");
+    }
+    return list.filter((a: any) => a.status !== "CANCELLED");
+  } catch {
+    return [];
+  }
+}

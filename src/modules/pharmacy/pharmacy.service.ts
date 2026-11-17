@@ -1,14 +1,16 @@
 import { prisma } from "../../infrastructure/database/prisma";
-import type {
-  CreateDispensationInput,
-  CreateMedicineInput,
-  StockMovementInput,
-} from "./pharmacy.types";
+import type { CreateDispensationInput, CreateMedicineInput, StockMovementInput } from "./pharmacy.types";
 
 export function generateDispensationNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
   const rand = Math.floor(100 + Math.random() * 900);
   return `DSP-${date}-${rand}`;
+}
+
+export function generateOrderNo(): string {
+  const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  const rand = Math.floor(100 + Math.random() * 900);
+  return `PO-${date}-${rand}`;
 }
 
 export async function listMedicines(pharmacyId?: string, search?: string) {
@@ -17,9 +19,7 @@ export async function listMedicines(pharmacyId?: string, search?: string) {
     let filtered = list.filter((m: any) => m.isActive);
 
     if (pharmacyId) {
-      filtered = filtered.filter(
-        (m: any) => String(m.pharmacyId) === String(pharmacyId),
-      );
+      filtered = filtered.filter((m: any) => String(m.pharmacyId) === String(pharmacyId));
     }
     if (search) {
       const q = search.toLowerCase();
@@ -34,6 +34,14 @@ export async function listMedicines(pharmacyId?: string, search?: string) {
   } catch (error) {
     console.error("List medicines error:", error);
     return [];
+  }
+}
+
+export async function getMedicineById(id: string) {
+  try {
+    return await prisma.orm.public.Medicine.where({ id }).first();
+  } catch {
+    return null;
   }
 }
 
@@ -55,17 +63,48 @@ export async function createMedicine(input: CreateMedicineInput) {
   });
 }
 
+export async function updateMedicine(id: string, data: Partial<CreateMedicineInput>) {
+  return await prisma.orm.public.Medicine.where({ id }).update(data);
+}
+
 export async function listInventory(locationId?: string) {
   try {
     const list = await prisma.orm.public.StockItem.all();
     if (locationId) {
-      return list.filter(
-        (item: any) => String(item.locationId) === String(locationId),
-      );
+      return list.filter((item: any) => String(item.locationId) === String(locationId));
     }
     return list;
   } catch {
     return [];
+  }
+}
+
+export async function listDispensations(pharmacyId?: string) {
+  try {
+    const list = await prisma.orm.public.Dispensation.all();
+    if (pharmacyId) {
+      return list.filter((d: any) => String(d.pharmacyId) === String(pharmacyId));
+    }
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+export async function getDispensationById(id: string) {
+  try {
+    const dispensation = await prisma.orm.public.Dispensation.where({ id }).first();
+    if (!dispensation) return null;
+    let items: any[] = [];
+    try {
+      items = await prisma.orm.public.DispensedItem.where({ dispensationId: id }).all();
+    } catch {}
+    return {
+      ...dispensation,
+      items,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -95,11 +134,8 @@ export async function createDispensation(input: CreateDispensationInput) {
     }
   }
 
-  // Update prescription status to COMPLETED
   try {
-    await prisma.orm.public.Prescription.where({
-      id: input.prescriptionId,
-    }).update({
+    await prisma.orm.public.Prescription.where({ id: input.prescriptionId }).update({
       status: "COMPLETED",
     });
   } catch {}
@@ -121,5 +157,76 @@ export async function recordStockMovement(input: StockMovementInput) {
     referenceNo: input.referenceNo,
     notes: input.notes,
     occurredAt: new Date(),
+  });
+}
+
+export async function listSuppliers(tenantId?: string) {
+  try {
+    const list = await prisma.orm.public.Supplier.all();
+    if (tenantId) {
+      return list.filter((s: any) => String(s.tenantId) === String(tenantId) && s.isActive);
+    }
+    return list.filter((s: any) => s.isActive);
+  } catch {
+    return [];
+  }
+}
+
+export async function createSupplier(tenantId: string, data: { code: string; name: string; contactName?: string; phone?: string; email?: string }) {
+  return await prisma.orm.public.Supplier.create({
+    tenantId,
+    code: data.code.toUpperCase(),
+    name: data.name,
+    contactName: data.contactName,
+    phone: data.phone,
+    email: data.email,
+    isActive: true,
+  });
+}
+
+export async function listPurchaseOrders(supplierId?: string) {
+  try {
+    const list = await prisma.orm.public.PurchaseOrder.all();
+    if (supplierId) {
+      return list.filter((p: any) => String(p.supplierId) === String(supplierId));
+    }
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+export async function createPurchaseOrder(supplierId: string, items: { itemCode: string; description: string; quantity: number; unitCost: number }[]) {
+  const orderNo = generateOrderNo();
+  const subtotal = items.reduce((acc, curr) => acc + curr.quantity * curr.unitCost, 0);
+
+  const po = await prisma.orm.public.PurchaseOrder.create({
+    supplierId,
+    orderNo,
+    status: "SUBMITTED",
+    orderedAt: new Date(),
+    subtotal,
+    total: subtotal,
+  });
+
+  for (const item of items) {
+    try {
+      await prisma.orm.public.PurchaseOrderItem.create({
+        purchaseOrderId: po.id,
+        itemCode: item.itemCode,
+        description: item.description,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+      });
+    } catch {}
+  }
+
+  return po;
+}
+
+export async function receivePurchaseOrder(id: string) {
+  return await prisma.orm.public.PurchaseOrder.where({ id }).update({
+    status: "RECEIVED",
+    receivedAt: new Date(),
   });
 }

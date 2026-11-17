@@ -7,6 +7,12 @@ export function generateRequestNo(): string {
   return `LAB-${date}-${rand}`;
 }
 
+export function generateAccessionNo(): string {
+  const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `ACC-${date}-${rand}`;
+}
+
 export async function listLabTests(laboratoryId?: string) {
   try {
     const list = await prisma.orm.public.LabTest.all();
@@ -17,6 +23,19 @@ export async function listLabTests(laboratoryId?: string) {
   } catch {
     return [];
   }
+}
+
+export async function createLabTest(data: { laboratoryId: string; code: string; name: string; loincCode?: string; specimenType?: string; unit?: string; price?: number }) {
+  return await prisma.orm.public.LabTest.create({
+    laboratoryId: data.laboratoryId,
+    code: data.code.toUpperCase(),
+    name: data.name,
+    loincCode: data.loincCode,
+    specimenType: data.specimenType,
+    unit: data.unit,
+    price: data.price,
+    isActive: true,
+  });
 }
 
 export async function listLabOrders(laboratoryId?: string) {
@@ -53,7 +72,6 @@ export async function getLabOrderById(id: string) {
 export async function createLabOrder(input: CreateLabOrderInput) {
   const requestNo = generateRequestNo();
 
-  // Create ServiceRequest first
   const serviceRequest = await prisma.orm.public.ServiceRequest.create({
     patientId: input.patientId,
     encounterId: input.encounterId,
@@ -66,7 +84,6 @@ export async function createLabOrder(input: CreateLabOrderInput) {
     notes: input.notes,
   });
 
-  // Create LabOrder
   const labOrder = await prisma.orm.public.LabOrder.create({
     serviceRequestId: serviceRequest.id,
     laboratoryId: input.laboratoryId,
@@ -95,6 +112,27 @@ export async function createLabOrder(input: CreateLabOrderInput) {
   };
 }
 
+export async function collectSpecimen(orderItemId: string, specimenType: string, collectedBy?: string) {
+  const accessionNo = generateAccessionNo();
+
+  const specimen = await prisma.orm.public.Specimen.create({
+    labOrderItemId: orderItemId,
+    accessionNo,
+    specimenType,
+    status: "COLLECTED",
+    collectedAt: new Date(),
+    collectedBy,
+  });
+
+  try {
+    await prisma.orm.public.LabOrderItem.where({ id: orderItemId }).update({
+      status: "IN_PROCESS",
+    });
+  } catch {}
+
+  return specimen;
+}
+
 export async function submitLabResult(input: SubmitLabResultInput) {
   const result = await prisma.orm.public.LabResult.create({
     labOrderItemId: input.orderItemId,
@@ -110,7 +148,6 @@ export async function submitLabResult(input: SubmitLabResultInput) {
     resultedAt: new Date(),
   });
 
-  // Update order item status
   try {
     await prisma.orm.public.LabOrderItem.where({ id: input.orderItemId }).update({
       status: "FINAL",

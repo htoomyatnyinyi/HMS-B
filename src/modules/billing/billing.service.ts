@@ -13,6 +13,12 @@ export function generatePaymentNo(): string {
   return `PAY-${date}-${rand}`;
 }
 
+export function generateRefundNo(): string {
+  const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  const rand = Math.floor(100 + Math.random() * 900);
+  return `REF-${date}-${rand}`;
+}
+
 export function generateClaimNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
   const rand = Math.floor(100 + Math.random() * 900);
@@ -126,6 +132,25 @@ export async function createInvoice(input: CreateInvoiceInput) {
   };
 }
 
+export async function voidInvoice(id: string) {
+  return await prisma.orm.public.Invoice.where({ id }).update({
+    status: "VOID",
+    balanceDue: 0,
+  });
+}
+
+export async function listPayments(invoiceId?: string) {
+  try {
+    const list = await prisma.orm.public.Payment.all();
+    if (invoiceId) {
+      return list.filter((p: any) => String(p.invoiceId) === String(invoiceId));
+    }
+    return list;
+  } catch {
+    return [];
+  }
+}
+
 export async function recordPayment(input: RecordPaymentInput) {
   const paymentNo = generatePaymentNo();
 
@@ -142,7 +167,6 @@ export async function recordPayment(input: RecordPaymentInput) {
     notes: input.notes,
   });
 
-  // Recalculate balance due
   try {
     const invoice = await prisma.orm.public.Invoice.where({ id: input.invoiceId }).first();
     if (invoice) {
@@ -158,6 +182,47 @@ export async function recordPayment(input: RecordPaymentInput) {
   } catch {}
 
   return payment;
+}
+
+export async function refundPayment(paymentId: string, amount: number, reason: string) {
+  const refundNo = generateRefundNo();
+
+  return await prisma.orm.public.Refund.create({
+    paymentId,
+    refundNo,
+    amount,
+    reason,
+    refundedAt: new Date(),
+  });
+}
+
+export async function listInsuranceProviders() {
+  try {
+    return await prisma.orm.public.InsuranceProvider.all();
+  } catch {
+    return [];
+  }
+}
+
+export async function createInsuranceProvider(data: { name: string; code: string; phone?: string; email?: string }) {
+  return await prisma.orm.public.InsuranceProvider.create({
+    name: data.name,
+    code: data.code.toUpperCase(),
+    phone: data.phone,
+    email: data.email,
+  });
+}
+
+export async function listInsuranceClaims(providerId?: string) {
+  try {
+    const list = await prisma.orm.public.InsuranceClaim.all();
+    if (providerId) {
+      return list.filter((c: any) => String(c.providerId) === String(providerId));
+    }
+    return list;
+  } catch {
+    return [];
+  }
 }
 
 export async function submitInsuranceClaim(input: SubmitClaimInput) {

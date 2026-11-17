@@ -2,7 +2,9 @@ import { Elysia, t } from "elysia";
 import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
 import {
+  collectSpecimen,
   createLabOrder,
+  createLabTest,
   getLabOrderById,
   listLabOrders,
   listLabTests,
@@ -21,6 +23,35 @@ export const laboratoryRoutes = new Elysia({ prefix: "/laboratory" })
     const tests = await listLabTests(query.laboratoryId);
     return successResponse(tests);
   })
+  .post(
+    "/tests",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "DOCTOR"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const test = await createLabTest(body);
+        return successResponse(test, "Lab test created successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to create lab test");
+      }
+    },
+    {
+      body: t.Object({
+        laboratoryId: t.String({ minLength: 1 }),
+        code: t.String({ minLength: 1 }),
+        name: t.String({ minLength: 1 }),
+        loincCode: t.Optional(t.String()),
+        specimenType: t.Optional(t.String()),
+        unit: t.Optional(t.String()),
+        price: t.Optional(t.Number()),
+      }),
+    },
+  )
   .get("/orders", async ({ query, user, set }) => {
     const auth = requireAuth(user);
     if (!auth.authorized) {
@@ -81,6 +112,29 @@ export const laboratoryRoutes = new Elysia({ prefix: "/laboratory" })
     }
     return successResponse(order);
   })
+  .post(
+    "/orders/:orderItemId/specimens",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user, ["NURSE", "DOCTOR", "ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const specimen = await collectSpecimen(params.orderItemId, body.specimenType, user?.email);
+        return successResponse(specimen, "Specimen collected successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to collect specimen");
+      }
+    },
+    {
+      body: t.Object({
+        specimenType: t.String({ minLength: 1 }),
+      }),
+    },
+  )
   .post(
     "/results",
     async ({ body, user, set }) => {
