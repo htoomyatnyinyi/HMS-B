@@ -11,7 +11,9 @@ export interface AuthenticatedUser {
   hospitalId?: string;
 }
 
-export async function registerUser(input: RegisterInput): Promise<AuthenticatedUser> {
+export async function registerUser(
+  input: RegisterInput,
+): Promise<AuthenticatedUser> {
   const normalizedEmail = input.email.trim().toLowerCase();
   const passwordHash = await Bun.password.hash(input.password);
 
@@ -47,31 +49,48 @@ export async function registerUser(input: RegisterInput): Promise<AuthenticatedU
       hospitalId: input.hospitalId,
     };
   } catch (error: any) {
-    if (error?.message?.includes("unique") || error?.message?.includes("duplicate")) {
+    if (
+      error?.message?.includes("unique") ||
+      error?.message?.includes("duplicate")
+    ) {
       throw new Error("A user with this email or username already exists");
     }
     throw error;
   }
 }
 
-export async function authenticateUser(input: LoginInput): Promise<AuthenticatedUser | null> {
+export async function authenticateUser(
+  input: LoginInput,
+): Promise<AuthenticatedUser | null> {
   const normalizedEmail = input.email.trim().toLowerCase();
 
   try {
-    const user = await prisma.orm.public.User
-      .where((candidate: any) => candidate.email.ilike(normalizedEmail))
-      .first();
+    const user = await prisma.orm.public.User.where({
+      email: normalizedEmail,
+    }).first();
 
     if (!user) return null;
 
-    const passwordMatches = await Bun.password.verify(input.password, user.passwordHash);
+    const passwordMatches = await Bun.password.verify(
+      input.password,
+      user.passwordHash,
+    );
     if (!passwordMatches) return null;
 
     let roles = ["STAFF"];
     try {
-      const userRoles = await prisma.orm.public.UserRole.where({ userId: user.id }).all();
+      const userRoles = await prisma.orm.public.UserRole.where({
+        userId: user.id,
+      }).all();
       if (userRoles && userRoles.length > 0) {
-        roles = userRoles.map((r: any) => String(r.roleId));
+        const roleNames: string[] = [];
+        for (const userRole of userRoles) {
+          const role = await prisma.orm.public.Role.where({
+            id: userRole.roleId,
+          }).first();
+          if (role?.name) roleNames.push(String(role.name));
+        }
+        if (roleNames.length > 0) roles = roleNames;
       }
     } catch {}
 
@@ -90,14 +109,18 @@ export async function authenticateUser(input: LoginInput): Promise<Authenticated
   }
 }
 
-export async function getUserProfile(userId: string): Promise<AuthenticatedUser | null> {
+export async function getUserProfile(
+  userId: string,
+): Promise<AuthenticatedUser | null> {
   try {
     const user = await prisma.orm.public.User.where({ id: userId }).first();
     if (!user) return null;
 
     let roles = ["STAFF"];
     try {
-      const userRoles = await prisma.orm.public.UserRole.where({ userId }).all();
+      const userRoles = await prisma.orm.public.UserRole.where({
+        userId,
+      }).all();
       if (userRoles && userRoles.length > 0) {
         roles = userRoles.map((r: any) => String(r.roleId));
       }
@@ -122,7 +145,9 @@ export async function listUsers(hospitalId?: string, search?: string) {
     const users = await prisma.orm.public.User.all();
     let filtered = users.filter((u: any) => !u.isDeleted);
     if (hospitalId) {
-      filtered = filtered.filter((u: any) => String(u.hospitalId) === String(hospitalId));
+      filtered = filtered.filter(
+        (u: any) => String(u.hospitalId) === String(hospitalId),
+      );
     }
     if (search) {
       const q = search.toLowerCase();
@@ -148,7 +173,15 @@ export async function listUsers(hospitalId?: string, search?: string) {
   }
 }
 
-export async function updateUser(id: string, data: { firstName?: string; lastName?: string; phone?: string; status?: string }) {
+export async function updateUser(
+  id: string,
+  data: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    status?: string;
+  },
+) {
   return await prisma.orm.public.User.where({ id }).update(data);
 }
 

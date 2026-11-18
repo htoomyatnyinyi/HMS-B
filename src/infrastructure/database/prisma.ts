@@ -8,6 +8,26 @@ export const sql = postgres(config.databaseUrl, {
   connect_timeout: 10,
 });
 
+const tableColumnsCache = new Map<string, Set<string>>();
+
+async function getTableColumns(tableName: string): Promise<Set<string>> {
+  const cached = tableColumnsCache.get(tableName);
+  if (cached) return cached;
+
+  const rows = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = ${tableName}
+  `;
+  const columns = new Set(rows.map((row) => row.column_name));
+  tableColumnsCache.set(tableName, columns);
+  return columns;
+}
+
+function toCamelCase(value: string): string {
+  return value.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
 function createModelHandler(tableName: string) {
   return {
     async all() {
@@ -123,13 +143,26 @@ function createModelHandler(tableName: string) {
     async create(data: Record<string, any>) {
       try {
         const id = data.id || crypto.randomUUID();
+        const columns = await getTableColumns(tableName);
+        const now = new Date();
+        const normalizedData = Object.fromEntries(
+          Object.entries(data).map(([key, value]) => {
+            const camelKey = columns.has(key) ? key : toCamelCase(key);
+            return [camelKey, value];
+          }),
+        );
         const payload: Record<string, any> = {
           id,
-          ...data,
+          ...(columns.has("createdAt") ? { createdAt: now } : {}),
+          ...(columns.has("updatedAt") ? { updatedAt: now } : {}),
+          ...normalizedData,
         };
 
         const cleaned = Object.fromEntries(
-          Object.entries(payload).filter(([_, v]) => v !== undefined),
+          Object.entries(payload).filter(
+            ([key, value]) =>
+              columns.has(key) && value !== undefined,
+          ),
         );
 
         const result = await sql`
@@ -142,11 +175,12 @@ function createModelHandler(tableName: string) {
           `[DB Insert Warning] ${tableName}.create():`,
           err?.message || err,
         );
-        return {
-          id: data.id || crypto.randomUUID(),
-          ...data,
-        };
+        throw err;
       }
+    },
+
+    async update(input: { where: Record<string, any>; data: Record<string, any> }) {
+      return await this.where(input.where).update(input.data);
     },
   };
 }
