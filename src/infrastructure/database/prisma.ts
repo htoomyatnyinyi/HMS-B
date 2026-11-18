@@ -123,11 +123,8 @@ function createModelHandler(tableName: string) {
     async create(data: Record<string, any>) {
       try {
         const id = data.id || crypto.randomUUID();
-        const now = new Date();
         const payload: Record<string, any> = {
           id,
-          createdAt: now,
-          updatedAt: now,
           ...data,
         };
 
@@ -148,8 +145,6 @@ function createModelHandler(tableName: string) {
         return {
           id: data.id || crypto.randomUUID(),
           ...data,
-          createdAt: new Date(),
-          updatedAt: new Date(),
         };
       }
     },

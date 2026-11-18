@@ -38,7 +38,15 @@ async function main() {
 
     // 3. Seed Roles
     console.log("➡️ Seeding Roles...");
-    const roles = ["SUPER_ADMIN", "ADMIN", "DOCTOR", "NURSE", "PHARMACIST", "CASHIER", "STAFF"];
+    const roles = [
+      "SUPER_ADMIN",
+      "ADMIN",
+      "DOCTOR",
+      "NURSE",
+      "PHARMACIST",
+      "CASHIER",
+      "STAFF",
+    ];
     for (const roleName of roles) {
       await prisma.orm.public.Role.create({
         tenantId: tenant.id,
@@ -62,7 +70,9 @@ async function main() {
       lastName: "Administrator",
       status: "ACTIVE",
     });
-    console.log(`✅ Admin User created: ${adminUser.email} / AdminPassword123!`);
+    console.log(
+      `✅ Admin User created: ${adminUser.email} / AdminPassword123!`,
+    );
 
     // 5. Seed Doctor User
     console.log("➡️ Seeding Doctor User...");
@@ -78,7 +88,9 @@ async function main() {
       phone: "+95911122233",
       status: "ACTIVE",
     });
-    console.log(`✅ Doctor User created: ${doctorUser.email} / DoctorPassword123!`);
+    console.log(
+      `✅ Doctor User created: ${doctorUser.email} / DoctorPassword123!`,
+    );
 
     // 6. Seed Default Departments
     console.log("➡️ Seeding Departments...");
@@ -97,7 +109,9 @@ async function main() {
         isActive: true,
       });
     }
-    console.log(`✅ Departments created: ${departments.map((d) => d.code).join(", ")}`);
+    console.log(
+      `✅ Departments created: ${departments.map((d) => d.code).join(", ")}`,
+    );
 
     // 7. Seed Default Pharmacy & Medicines
     console.log("➡️ Seeding Pharmacy & Medicines...");
@@ -109,11 +123,46 @@ async function main() {
     });
 
     const sampleMeds = [
-      { code: "MED001", name: "Paracetamol", genericName: "Acetaminophen", strength: "500mg", dosageForm: "Tablet", unit: "tablet" },
-      { code: "MED002", name: "Amoxicillin", genericName: "Amoxicillin Trihydrate", strength: "500mg", dosageForm: "Capsule", unit: "capsule" },
-      { code: "MED003", name: "Omeprazole", genericName: "Omeprazole", strength: "20mg", dosageForm: "Capsule", unit: "capsule" },
-      { code: "MED004", name: "Cetirizine", genericName: "Cetirizine Dihydrochloride", strength: "10mg", dosageForm: "Tablet", unit: "tablet" },
-      { code: "MED005", name: "Metformin", genericName: "Metformin HCl", strength: "500mg", dosageForm: "Tablet", unit: "tablet" },
+      {
+        code: "MED001",
+        name: "Paracetamol",
+        genericName: "Acetaminophen",
+        strength: "500mg",
+        dosageForm: "Tablet",
+        unit: "tablet",
+      },
+      {
+        code: "MED002",
+        name: "Amoxicillin",
+        genericName: "Amoxicillin Trihydrate",
+        strength: "500mg",
+        dosageForm: "Capsule",
+        unit: "capsule",
+      },
+      {
+        code: "MED003",
+        name: "Omeprazole",
+        genericName: "Omeprazole",
+        strength: "20mg",
+        dosageForm: "Capsule",
+        unit: "capsule",
+      },
+      {
+        code: "MED004",
+        name: "Cetirizine",
+        genericName: "Cetirizine Dihydrochloride",
+        strength: "10mg",
+        dosageForm: "Tablet",
+        unit: "tablet",
+      },
+      {
+        code: "MED005",
+        name: "Metformin",
+        genericName: "Metformin HCl",
+        strength: "500mg",
+        dosageForm: "Tablet",
+        unit: "tablet",
+      },
     ];
 
     for (const med of sampleMeds) {
