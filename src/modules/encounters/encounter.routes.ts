@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
+import { audit } from "../../shared/audit";
 import {
   addClinicalNote,
   addEncounterDiagnosis,
@@ -112,6 +113,7 @@ export const encounterRoutes = new Elysia({ prefix: "/encounters" })
 
       try {
         const finished = await finishEncounter(params.id, body.clinicalSummary, body.disposition);
+        await audit(user, "UPDATE", "Encounter", params.id, { status: "FINISHED" });
         return successResponse(finished, "Encounter concluded successfully");
       } catch (err: any) {
         set.status = 400;

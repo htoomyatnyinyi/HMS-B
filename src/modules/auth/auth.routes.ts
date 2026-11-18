@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { config } from "../../config/env";
 import { authMiddleware, jwtPlugin, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
-import { listAuditLogs } from "../../shared/audit";
+import { audit, listAuditLogs } from "../../shared/audit";
 import {
   assignUserRole,
   authenticateUser,
@@ -61,6 +61,14 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         exp: Math.floor(Date.now() / 1000) + config.jwtExpiresIn,
       });
 
+      await audit({
+        userId: user.id,
+        email: user.email,
+        roles: user.roles,
+        tenantId: user.tenantId,
+        hospitalId: user.hospitalId,
+      }, "LOGIN", "User", user.id);
+
       return successResponse({
         accessToken,
         tokenType: "Bearer",
@@ -90,7 +98,8 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
 
     return successResponse(profile);
   })
-  .post("/logout", async () => {
+  .post("/logout", async ({ user }) => {
+    await audit(user, "LOGOUT", "User", user?.userId);
     return successResponse({ loggedOut: true }, "Logged out successfully");
   })
   .get("/users", async ({ query, user, set }) => {
@@ -130,6 +139,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
           tenantId: user!.tenantId,
           hospitalId: user!.hospitalId,
         });
+        await audit(user, "CREATE", "User", created.id, { email: created.email });
         return successResponse(created, "Staff account created successfully");
       } catch (err: any) {
         set.status = 400;
@@ -159,6 +169,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
 
       try {
         const updated = await updateUser(params.id, body);
+        await audit(user, "UPDATE", "User", params.id, { fields: Object.keys(body) });
         return successResponse(updated, "User updated successfully");
       } catch (err: any) {
         set.status = 400;
@@ -185,6 +196,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
 
       try {
         const assigned = await assignUserRole(params.id, body.roleId);
+        await audit(user, "UPDATE", "UserRole", params.id, { roleId: body.roleId });
         return successResponse(assigned, "Role assigned successfully");
       } catch (err: any) {
         set.status = 400;

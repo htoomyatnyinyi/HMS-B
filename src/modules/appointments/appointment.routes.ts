@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
+import { audit } from "../../shared/audit";
 import {
   bookAppointment,
   getAppointmentById,
@@ -52,6 +53,7 @@ export const appointmentRoutes = new Elysia({ prefix: "/appointments" })
           hospitalId,
           createdById: user?.userId,
         });
+        await audit(user, "CREATE", "Appointment", appointment.id);
         return successResponse(appointment, "Appointment scheduled successfully");
       } catch (err: any) {
         set.status = 400;
@@ -107,6 +109,7 @@ export const appointmentRoutes = new Elysia({ prefix: "/appointments" })
 
       try {
         const updated = await updateAppointmentStatus(params.id, body.status as AppointmentStatus, body.notes);
+        await audit(user, "UPDATE", "Appointment", params.id, { status: body.status });
         return successResponse(updated, `Appointment status updated to ${body.status}`);
       } catch (err: any) {
         set.status = 400;

@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
+import { audit } from "../../shared/audit";
 import {
   collectSpecimen,
   createLabOrder,
@@ -149,6 +150,7 @@ export const laboratoryRoutes = new Elysia({ prefix: "/laboratory" })
           ...body,
           verifiedBy: user?.email,
         });
+        await audit(user, "CREATE", "LabResult", result.id, { orderItemId: body.orderItemId });
         return successResponse(result, "Lab result submitted successfully");
       } catch (err: any) {
         set.status = 400;

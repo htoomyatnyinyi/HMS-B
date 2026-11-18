@@ -51,6 +51,9 @@ console.log(`Running HMS smoke checks against ${baseUrl}`);
 const healthResponse = await fetch(`${baseUrl.replace(/\/api\/v1$/, "")}/health/`);
 if (!healthResponse.ok) throw new Error(`GET /health/ failed (${healthResponse.status})`);
 console.log("✅ /health/");
+const readyResponse = await fetch(`${baseUrl.replace(/\/api\/v1$/, "")}/health/ready`);
+if (!readyResponse.ok) throw new Error(`GET /health/ready failed (${readyResponse.status})`);
+console.log("✅ /health/ready");
 const loginTokens: string[] = [];
 for (const account of accounts) {
   const login = await request("/auth/login", {

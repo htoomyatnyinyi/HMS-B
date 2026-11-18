@@ -7,7 +7,12 @@
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --target=bun",
     "seed": "bun run scripts/seed.ts",
-    "smoke": "bun run scripts/smoke.ts"
+    "smoke": "bun run scripts/smoke.ts",
+    "db:validate": "bunx prisma validate",
+    "db:format": "bunx prisma format",
+    "db:generate": "bunx prisma generate",
+    "db:push": "bunx prisma db push",
+    "db:reset": "bunx prisma db push --force-reset --accept-data-loss"
   },
   "dependencies": {
     "@elysiajs/jwt": "^1.4.2",

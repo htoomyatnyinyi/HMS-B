@@ -24,6 +24,27 @@ RESTORE_CONFIRM=YES bash scripts/restore.sh backups/hms-YYYYMMDD-HHMMSS.dump
 docker compose exec api bun run smoke
 ```
 
+## Database commands
+
+```bash
+docker compose exec api bun run db:validate
+docker compose exec api bun run db:generate
+docker compose exec api bun run db:push
+###
+docker compose exec api bun run db:validate
+docker compose exec api bun run db:format
+docker compose exec api bun run db:generate
+docker compose exec api bun run db:push
+docker compose exec api bun run db:reset
+```
+
+For development only, reset and reseed:
+
+```bash
+docker compose exec api bun run db:reset
+docker compose exec api bun run seed
+```
+
 ## Development reset
 
 ```bash
