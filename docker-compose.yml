@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: hms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-hms_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - hms_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-hms_user} -d ${POSTGRES_DB:-hms_db}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - hms-network
+
+  adminer:
+    image: adminer:latest
+    container_name: hms-adminer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hms-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hms-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hms_user}:${POSTGRES_PASSWORD:-local_dev_change_me}@postgres:5432/${POSTGRES_DB:-hms_db}
+      JWT_SECRET: ${JWT_SECRET:-NZL8Ixu9Vf8gJjFO0s/8bY1qP2f12AVNBI88/7/zwBF/04/4v5oLKgmxsNf7ICgk}
+      PORT: 3000
+      NODE_ENV: development
+    command: ["bun", "run", "dev"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hms-network
+
+volumes:
+  hms_postgres_data:
+    driver: local
+
+networks:
+  hms-network:
+    driver: bridge

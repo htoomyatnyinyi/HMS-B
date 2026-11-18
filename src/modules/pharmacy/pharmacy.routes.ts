@@ -1,271 +1,334 @@
 import { Elysia, t } from "elysia";
-import jwt from "@elysiajs/jwt";
-import { prisma } from "../../infrastructure/database/prisma";
-import { authenticateUser, getUserClinicMemberships } from "../auth/auth.service";
+import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
+import { errorResponse, successResponse } from "../../shared/utils/response";
+import { audit } from "../../shared/audit";
 import {
-  adjustStock,
-  createMedication,
-  dispenseStock,
-  InventoryError,
+  createDispensation,
+  createMedicine,
+  getDefaultPharmacy,
+  createPurchaseOrder,
+  createSupplier,
+  getDispensationById,
+  getMedicineById,
+  listDispensations,
   listInventory,
-  listMedications,
-  listMovements,
-  receiveStock,
-  transferStock,
-  type StockActor,
+  listMedicines,
+  listPurchaseOrders,
+  listSuppliers,
+  receivePurchaseOrder,
+  recordStockMovement,
+  updateMedicine,
 } from "./pharmacy.service";
 
-const configuredSecret = process.env.AUTH_JWT_SECRET;
-if (!configuredSecret && process.env.NODE_ENV === "production") {
-  throw new Error("AUTH_JWT_SECRET must be configured in production");
-}
-const jwtSecret = configuredSecret ?? crypto.randomUUID();
+export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
+  .use(authMiddleware)
+  .get("/medicines", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
 
-const tokenPlugin = jwt({ name: "jwt", secret: jwtSecret });
+    const medicines = await listMedicines(query.pharmacyId, query.search);
+    return successResponse(medicines);
+  })
+  .get("/medicines/:id", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
 
-function errorResponse(error: unknown, set: { status?: number }) {
-  if (error instanceof InventoryError) {
-    set.status = error.status;
-    return { error: error.message };
-  }
-  console.error("Pharmacy operation failed:", error);
-  set.status = 500;
-  return { error: "Pharmacy operation failed" };
-}
-
-function positiveId(value: string): number | null {
-  if (!/^[1-9]\d*$/.test(value)) return null;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) ? parsed : null;
-}
-
-async function authorizeClinic(
-  authorization: string | undefined,
-  clinicId: string,
-  verify: (token: string) => Promise<unknown>,
-  allowedRoles: string[],
-): Promise<{ actor: StockActor; role: string } | null> {
-  const clinicKey = positiveId(clinicId);
-  if (!clinicKey) return null;
-  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (!token) return null;
-
-  let payload: unknown;
-  try {
-    payload = await verify(token);
-  } catch {
-    return null;
-  }
-  if (!payload || typeof payload !== "object" || !("sub" in payload)) return null;
-  const userId = (payload as { sub?: unknown }).sub;
-  if (typeof userId !== "string") return null;
-  const userKey = positiveId(userId);
-  if (!userKey) return null;
-
-  const membership = await prisma.orm.public.ClinicMembership.where({
-    userId: userKey,
-    clinicId: clinicKey,
-    isActive: true,
-  }).first();
-  if (!membership || !allowedRoles.includes(membership.role)) return null;
-  return {
-    actor: { clinicId: membership.clinicId, userId: userKey },
-    role: membership.role,
-  };
-}
-
-export const pharmacyRoutes = new Elysia()
-  .use(tokenPlugin)
+    const medicine = await getMedicineById(params.id);
+    if (!medicine) {
+      set.status = 404;
+      return errorResponse("Medicine not found");
+    }
+    return successResponse(medicine);
+  })
   .post(
-    "/auth/login",
-    async ({ body, jwt, set }) => {
-      const user = await authenticateUser(body.email, body.password);
-      if (!user) {
-        set.status = 401;
-        return { error: "Email or password is incorrect" };
-      }
-      const memberships = await getUserClinicMemberships(user.id);
-      const accessToken = await jwt.sign({
-        sub: String(user.id),
-        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12,
-      });
-      return { accessToken, tokenType: "Bearer", expiresIn: 43200, user, memberships };
-    },
-    { body: t.Object({ email: t.String({ format: "email" }), password: t.String({ minLength: 1 }) }) },
-  )
-  .get(
-    "/api/clinics/:clinicId/medications",
-    async ({ headers, params, jwt, set }) => {
-      const access = await authorizeClinic(headers.authorization, params.clinicId, ((token: string) => jwt.verify(token)), [
-        "OWNER", "ADMIN", "DOCTOR", "NURSE", "PHARMACIST", "RECEPTIONIST", "ACCOUNTANT",
-      ]);
-      if (!access) {
+    "/medicines",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["PHARMACIST", "ADMIN"]);
+      if (!auth.authorized) {
         set.status = 403;
-        return { error: "Clinic access denied" };
+        return errorResponse(auth.reason || "Forbidden: Pharmacist or Admin role required");
       }
-      return listMedications(access.actor);
-    },
-    { params: t.Object({ clinicId: t.String({ pattern: "^[1-9]\\d*$" }) }) },
-  )
-  .post(
-    "/api/clinics/:clinicId/medications",
-    async ({ headers, params, body, jwt, set }) => {
-      const access = await authorizeClinic(headers.authorization, params.clinicId, ((token: string) => jwt.verify(token)), ["OWNER", "ADMIN", "PHARMACIST"]);
-      if (!access) {
-        set.status = 403;
-        return { error: "Clinic access denied" };
-      }
+
       try {
-        return await createMedication(access.actor, body);
-      } catch (error) {
-        return errorResponse(error, set);
+        const pharmacy = body.pharmacyId
+          ? { id: body.pharmacyId }
+          : await getDefaultPharmacy(user?.hospitalId);
+        if (!pharmacy) {
+          set.status = 400;
+          return errorResponse("No pharmacy is configured for this hospital");
+        }
+        const medicine = await createMedicine({ ...body, pharmacyId: pharmacy.id });
+        return successResponse(medicine, "Medicine created successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to create medicine");
       }
     },
     {
-      params: t.Object({ clinicId: t.String({ pattern: "^[1-9]\\d*$" }) }),
       body: t.Object({
-        code: t.Optional(t.String()),
-        name: t.String({ minLength: 1, maxLength: 200 }),
+        pharmacyId: t.Optional(t.String()),
+        code: t.String({ minLength: 1 }),
+        name: t.String({ minLength: 1 }),
+        genericName: t.Optional(t.String()),
         strength: t.Optional(t.String()),
         dosageForm: t.Optional(t.String()),
-        unit: t.String({ minLength: 1, maxLength: 40 }),
+        route: t.Optional(t.String()),
+        manufacturer: t.Optional(t.String()),
+        barcode: t.Optional(t.String()),
+        unit: t.Optional(t.String()),
+        reorderLevel: t.Optional(t.Number()),
+        isControlled: t.Optional(t.Boolean()),
       }),
     },
   )
-  .get(
-    "/api/clinics/:clinicId/inventory",
-    async ({ headers, params, query, jwt, set }) => {
-      const access = await authorizeClinic(headers.authorization, params.clinicId, ((token: string) => jwt.verify(token)), [
-        "OWNER", "ADMIN", "DOCTOR", "NURSE", "PHARMACIST", "RECEPTIONIST", "ACCOUNTANT",
-      ]);
-      if (!access) {
+  .put(
+    "/medicines/:id",
+    async ({ params, body, user, set }) => {
+      const auth = requireAuth(user, ["PHARMACIST", "ADMIN"]);
+      if (!auth.authorized) {
         set.status = 403;
-        return { error: "Clinic access denied" };
+        return errorResponse(auth.reason || "Forbidden");
       }
-      return listInventory(access.actor, query.medicationId);
-    },
-    {
-      params: t.Object({ clinicId: t.String({ pattern: "^[1-9]\\d*$" }) }),
-      query: t.Object({ medicationId: t.Optional(t.String({ format: "uuid" })) }),
-    },
-  )
-  .get(
-    "/api/clinics/:clinicId/inventory/movements",
-    async ({ headers, params, query, jwt, set }) => {
-      const access = await authorizeClinic(headers.authorization, params.clinicId, ((token: string) => jwt.verify(token)), [
-        "OWNER", "ADMIN", "DOCTOR", "NURSE", "PHARMACIST", "ACCOUNTANT",
-      ]);
-      if (!access) {
-        set.status = 403;
-        return { error: "Clinic access denied" };
-      }
-      return listMovements(access.actor, Number(query.limit ?? 100));
-    },
-    {
-      params: t.Object({ clinicId: t.String({ pattern: "^[1-9]\\d*$" }) }),
-      query: t.Object({ limit: t.Optional(t.String({ pattern: "^\\d+$" })) }),
-    },
-  )
-  .post(
-    "/api/clinics/:clinicId/inventory/receive",
-    async ({ headers, params, body, jwt, set }) => {
-      const access = await authorizeClinic(headers.authorization, params.clinicId, ((token: string) => jwt.verify(token)), ["OWNER", "ADMIN", "PHARMACIST"]);
-      if (!access) {
-        set.status = 403;
-        return { error: "Clinic access denied" };
-      }
+
       try {
-        return await receiveStock(access.actor, headers["idempotency-key"] ?? "", body);
-      } catch (error) {
-        return errorResponse(error, set);
+        const updated = await updateMedicine(params.id, body);
+        return successResponse(updated, "Medicine updated successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to update medicine");
       }
     },
     {
-      params: t.Object({ clinicId: t.String({ pattern: "^[1-9]\\d*$" }) }),
       body: t.Object({
-        medicationId: t.String({ format: "uuid" }),
-        batchNumber: t.String({ minLength: 1, maxLength: 100 }),
-        expiresAt: t.Optional(t.Union([t.String({ format: "date" }), t.Null()])),
-        quantity: t.String({ pattern: "^\\d+(\\.\\d{1,3})?$" }),
-        unitCost: t.Optional(t.String({ pattern: "^\\d+(\\.\\d{1,2})?$" })),
-        reference: t.Optional(t.String()),
-        reason: t.Optional(t.String()),
-        movementType: t.Optional(t.Union([t.Literal("RECEIPT"), t.Literal("RETURN")])),
+        name: t.Optional(t.String()),
+        genericName: t.Optional(t.String()),
+        strength: t.Optional(t.String()),
+        dosageForm: t.Optional(t.String()),
+        route: t.Optional(t.String()),
+        reorderLevel: t.Optional(t.Number()),
+        isControlled: t.Optional(t.Boolean()),
       }),
     },
   )
+  .get("/inventory", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const items = await listInventory(query.locationId);
+    return successResponse(items);
+  })
+  .get("/dispensations", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const list = await listDispensations(query.pharmacyId);
+    return successResponse(list);
+  })
+  .get("/dispensations/:id", async ({ params, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const dispensation = await getDispensationById(params.id);
+    if (!dispensation) {
+      set.status = 404;
+      return errorResponse("Dispensation not found");
+    }
+    return successResponse(dispensation);
+  })
   .post(
-    "/api/clinics/:clinicId/inventory/dispense",
-    async ({ headers, params, body, jwt, set }) => {
-      const access = await authorizeClinic(headers.authorization, params.clinicId, ((token: string) => jwt.verify(token)), ["OWNER", "ADMIN", "PHARMACIST", "DOCTOR", "NURSE"]);
-      if (!access) {
+    "/dispensations",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["PHARMACIST", "NURSE", "ADMIN"]);
+      if (!auth.authorized) {
         set.status = 403;
-        return { error: "Clinic access denied" };
+        return errorResponse(auth.reason || "Forbidden: Only pharmacy staff can dispense");
       }
+
       try {
-        return await dispenseStock(access.actor, headers["idempotency-key"] ?? "", body);
-      } catch (error) {
-        return errorResponse(error, set);
+        const pharmacy = body.pharmacyId
+          ? { id: body.pharmacyId }
+          : await getDefaultPharmacy(user?.hospitalId);
+        if (!pharmacy) {
+          set.status = 400;
+          return errorResponse("No pharmacy is configured for this hospital");
+        }
+        const dispensation = await createDispensation({
+          ...body,
+          pharmacyId: pharmacy.id,
+          pharmacistName: user?.email,
+        });
+        await audit(user, "CREATE", "Dispensation", dispensation.id);
+        return successResponse(dispensation, "Medicines dispensed successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to dispense prescription");
       }
     },
     {
-      params: t.Object({ clinicId: t.String({ pattern: "^[1-9]\\d*$" }) }),
       body: t.Object({
-        medicationId: t.String({ format: "uuid" }),
-        quantity: t.String({ pattern: "^\\d+(\\.\\d{1,3})?$" }),
-        reference: t.Optional(t.String()),
-        reason: t.Optional(t.String()),
-      }),
-    },
-  )
-  .post(
-    "/api/clinics/:clinicId/inventory/adjust",
-    async ({ headers, params, body, jwt, set }) => {
-      const access = await authorizeClinic(headers.authorization, params.clinicId, ((token: string) => jwt.verify(token)), ["OWNER", "ADMIN", "PHARMACIST"]);
-      if (!access) {
-        set.status = 403;
-        return { error: "Clinic access denied" };
-      }
-      try {
-        return await adjustStock(access.actor, headers["idempotency-key"] ?? "", body);
-      } catch (error) {
-        return errorResponse(error, set);
-      }
-    },
-    {
-      params: t.Object({ clinicId: t.String({ pattern: "^[1-9]\\d*$" }) }),
-      body: t.Object({
-        medicationId: t.String({ format: "uuid" }),
-        quantityDelta: t.String({ pattern: "^-?\\d+(\\.\\d{1,3})?$" }),
-        batchNumber: t.Optional(t.String()),
-        expiresAt: t.Optional(t.Union([t.String({ format: "date" }), t.Null()])),
-        lotId: t.Optional(t.String({ format: "uuid" })),
-        unitCost: t.Optional(t.String({ pattern: "^\\d+(\\.\\d{1,2})?$" })),
-        reason: t.String({ minLength: 1, maxLength: 500 }),
+        pharmacyId: t.Optional(t.String()),
+        prescriptionId: t.String({ minLength: 1 }),
+        items: t.Array(
+          t.Object({
+            prescriptionItemId: t.String({ minLength: 1 }),
+            quantity: t.Number({ minimum: 1 }),
+          }),
+        ),
       }),
     },
   )
   .post(
-    "/api/clinics/:clinicId/inventory/transfer",
-    async ({ headers, params, body, jwt, set }) => {
-      const access = await authorizeClinic(headers.authorization, params.clinicId, ((token: string) => jwt.verify(token)), ["OWNER", "ADMIN", "PHARMACIST"]);
-      if (!access) {
+    "/movements",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["PHARMACIST", "ADMIN"]);
+      if (!auth.authorized) {
         set.status = 403;
-        return { error: "Clinic access denied" };
+        return errorResponse(auth.reason || "Forbidden");
       }
+
       try {
-        return await transferStock(access.actor, headers["idempotency-key"] ?? "", body);
-      } catch (error) {
-        return errorResponse(error, set);
+        const movement = await recordStockMovement(body);
+        return successResponse(movement, "Stock movement recorded successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to record stock movement");
       }
     },
     {
-      params: t.Object({ clinicId: t.String({ pattern: "^[1-9]\\d*$" }) }),
       body: t.Object({
-        sourceLotId: t.String({ format: "uuid" }),
-        destinationLotId: t.String({ format: "uuid" }),
-        quantity: t.String({ pattern: "^\\d+(\\.\\d{1,3})?$" }),
-        reason: t.Optional(t.String()),
+        locationId: t.String({ minLength: 1 }),
+        medicineCode: t.String({ minLength: 1 }),
+        batchNo: t.Optional(t.String()),
+        movementType: t.Union([
+          t.Literal("OPENING"),
+          t.Literal("PURCHASE"),
+          t.Literal("SALE"),
+          t.Literal("DISPENSE"),
+          t.Literal("RETURN"),
+          t.Literal("TRANSFER"),
+          t.Literal("ADJUSTMENT"),
+          t.Literal("DAMAGE"),
+          t.Literal("EXPIRED"),
+        ]),
+        quantity: t.Number(),
+        unitCost: t.Optional(t.Number()),
+        referenceNo: t.Optional(t.String()),
+        notes: t.Optional(t.String()),
       }),
     },
-  );
+  )
+  .get("/suppliers", async ({ user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const suppliers = await listSuppliers(user?.tenantId);
+    return successResponse(suppliers);
+  })
+  .post(
+    "/suppliers",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "PHARMACIST"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      const tenantId = body.tenantId || user?.tenantId;
+      if (!tenantId) {
+        set.status = 400;
+        return errorResponse("tenantId is required");
+      }
+
+      try {
+        const supplier = await createSupplier(tenantId, body);
+        return successResponse(supplier, "Supplier added successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to add supplier");
+      }
+    },
+    {
+      body: t.Object({
+        tenantId: t.Optional(t.String()),
+        code: t.String({ minLength: 1 }),
+        name: t.String({ minLength: 1 }),
+        contactName: t.Optional(t.String()),
+        phone: t.Optional(t.String()),
+        email: t.Optional(t.String({ format: "email" })),
+      }),
+    },
+  )
+  .get("/purchase-orders", async ({ query, user, set }) => {
+    const auth = requireAuth(user);
+    if (!auth.authorized) {
+      set.status = 401;
+      return errorResponse(auth.reason || "Unauthorized");
+    }
+
+    const orders = await listPurchaseOrders(query.supplierId);
+    return successResponse(orders);
+  })
+  .post(
+    "/purchase-orders",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "PHARMACIST"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+
+      try {
+        const po = await createPurchaseOrder(body.supplierId, body.items);
+        return successResponse(po, "Purchase order submitted successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to create purchase order");
+      }
+    },
+    {
+      body: t.Object({
+        supplierId: t.String({ minLength: 1 }),
+        items: t.Array(
+          t.Object({
+            itemCode: t.String({ minLength: 1 }),
+            description: t.String({ minLength: 1 }),
+            quantity: t.Number({ minimum: 1 }),
+            unitCost: t.Number({ minimum: 0 }),
+          }),
+        ),
+      }),
+    },
+  )
+  .patch("/purchase-orders/:id/receive", async ({ params, user, set }) => {
+    const auth = requireAuth(user, ["ADMIN", "PHARMACIST"]);
+    if (!auth.authorized) {
+      set.status = 403;
+      return errorResponse(auth.reason || "Forbidden");
+    }
+
+    try {
+      const received = await receivePurchaseOrder(params.id);
+      return successResponse(received, "Purchase order received & inventory updated");
+    } catch (err: any) {
+      set.status = 400;
+      return errorResponse(err.message || "Failed to receive purchase order");
+    }
+  });
