@@ -92,25 +92,25 @@ export async function createInvoice(input: CreateInvoiceInput) {
 
   const grandTotal = subtotal - totalDiscount + totalTax;
 
-  const invoice = await prisma.orm.public.Invoice.create({
-    hospitalId: input.hospitalId,
-    patientId: input.patientId,
-    invoiceNo,
-    status: "ISSUED",
-    issuedAt: new Date(),
-    subtotal,
-    discount: totalDiscount,
-    tax: totalTax,
-    total: grandTotal,
-    balanceDue: grandTotal,
-    currency: input.currency || "THB",
-  });
+  return await prisma.transaction(async (tx) => {
+    const invoice = await tx.orm.public.Invoice.create({
+      hospitalId: input.hospitalId,
+      patientId: input.patientId,
+      invoiceNo,
+      status: "ISSUED",
+      issuedAt: new Date(),
+      subtotal,
+      discount: totalDiscount,
+      tax: totalTax,
+      total: grandTotal,
+      balanceDue: grandTotal,
+      currency: input.currency || "THB",
+    });
 
-  const createdItems = [];
-  for (const item of input.items) {
-    try {
+    const createdItems = [];
+    for (const item of input.items) {
       const lineTotal = item.quantity * item.unitPrice - (item.discount || 0) + (item.tax || 0);
-      const createdItem = await prisma.orm.public.InvoiceItem.create({
+      const createdItem = await tx.orm.public.InvoiceItem.create({
         invoiceId: invoice.id,
         serviceCode: item.serviceCode,
         description: item.description,
@@ -121,15 +121,13 @@ export async function createInvoice(input: CreateInvoiceInput) {
         lineTotal,
       });
       createdItems.push(createdItem);
-    } catch (err) {
-      console.error("Error creating invoice item:", err);
     }
-  }
 
-  return {
-    ...invoice,
-    items: createdItems,
-  };
+    return {
+      ...invoice,
+      items: createdItems,
+    };
+  });
 }
 
 export async function voidInvoice(id: string) {
@@ -153,35 +151,30 @@ export async function listPayments(invoiceId?: string) {
 
 export async function recordPayment(input: RecordPaymentInput) {
   const paymentNo = generatePaymentNo();
-
-  const payment = await prisma.orm.public.Payment.create({
-    invoiceId: input.invoiceId,
-    paymentNo,
-    method: input.method,
-    status: "COMPLETED",
-    amount: input.amount,
-    currency: input.currency || "THB",
-    transactionRef: input.transactionRef,
-    paidAt: new Date(),
-    receivedBy: input.receivedBy,
-    notes: input.notes,
+  return await prisma.transaction(async (tx) => {
+    const invoice = await tx.orm.public.Invoice.where({ id: input.invoiceId }).first();
+    if (!invoice) throw new Error("Invoice not found");
+    const currentBalance = Number(invoice.balanceDue ?? invoice.total ?? 0);
+    if (input.amount > currentBalance) throw new Error("Payment exceeds invoice balance");
+    const newBalance = Math.max(0, currentBalance - input.amount);
+    const payment = await tx.orm.public.Payment.create({
+      invoiceId: input.invoiceId,
+      paymentNo,
+      method: input.method,
+      status: "COMPLETED",
+      amount: input.amount,
+      currency: input.currency || "THB",
+      transactionRef: input.transactionRef,
+      paidAt: new Date(),
+      receivedBy: input.receivedBy,
+      notes: input.notes,
+    });
+    await tx.orm.public.Invoice.where({ id: input.invoiceId }).update({
+      balanceDue: newBalance,
+      status: newBalance <= 0 ? "PAID" : "PARTIALLY_PAID",
+    });
+    return payment;
   });
-
-  try {
-    const invoice = await prisma.orm.public.Invoice.where({ id: input.invoiceId }).first();
-    if (invoice) {
-      const currentBalance = Number(invoice.balanceDue || invoice.total);
-      const newBalance = Math.max(0, currentBalance - input.amount);
-      const newStatus = newBalance <= 0 ? "PAID" : "PARTIALLY_PAID";
-
-      await prisma.orm.public.Invoice.where({ id: input.invoiceId }).update({
-        balanceDue: newBalance,
-        status: newStatus,
-      });
-    }
-  } catch {}
-
-  return payment;
 }
 
 export async function refundPayment(paymentId: string, amount: number, reason: string) {

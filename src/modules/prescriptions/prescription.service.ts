@@ -57,30 +57,29 @@ export async function getPrescriptionById(id: string) {
 
 export async function createPrescription(input: CreatePrescriptionInput) {
   const prescriptionNo = generatePrescriptionNo();
-
-  let doctorId = input.doctorId;
-  if (!doctorId && input.userId) {
-    const staff = await prisma.orm.public.Staff.where({ userId: input.userId }).first();
-    if (staff) {
-      const doctor = await prisma.orm.public.Doctor.where({ staffId: staff.id }).first();
-      doctorId = doctor?.id;
+  return await prisma.transaction(async (tx) => {
+    let doctorId = input.doctorId;
+    if (!doctorId && input.userId) {
+      const staff = await tx.orm.public.Staff.where({ userId: input.userId }).first();
+      if (staff) {
+        const doctor = await tx.orm.public.Doctor.where({ staffId: staff.id }).first();
+        doctorId = doctor?.id;
+      }
     }
-  }
 
-  const prescription = await prisma.orm.public.Prescription.create({
-    patientId: input.patientId,
-    encounterId: input.encounterId,
-    doctorId,
-    prescriptionNo,
-    status: "ACTIVE",
-    prescribedAt: new Date(),
-    notes: input.notes,
-  });
+    const prescription = await tx.orm.public.Prescription.create({
+      patientId: input.patientId,
+      encounterId: input.encounterId,
+      doctorId,
+      prescriptionNo,
+      status: "ACTIVE",
+      prescribedAt: new Date(),
+      notes: input.notes,
+    });
 
-  const createdItems = [];
-  for (const item of input.items) {
-    try {
-      const createdItem = await prisma.orm.public.PrescriptionItem.create({
+    const createdItems = [];
+    for (const item of input.items) {
+      const createdItem = await tx.orm.public.PrescriptionItem.create({
         prescriptionId: prescription.id,
         medicineId: item.medicineId,
         dose: item.dose,
@@ -91,15 +90,13 @@ export async function createPrescription(input: CreatePrescriptionInput) {
         instructions: item.instructions,
       });
       createdItems.push(createdItem);
-    } catch (err) {
-      console.error("Error creating prescription item:", err);
     }
-  }
 
-  return {
-    ...prescription,
-    items: createdItems,
-  };
+    return {
+      ...prescription,
+      items: createdItems,
+    };
+  });
 }
 
 export async function cancelPrescription(id: string) {

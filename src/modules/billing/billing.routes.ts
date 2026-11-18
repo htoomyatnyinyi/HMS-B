@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
+import { audit } from "../../shared/audit";
 import {
   createInsuranceProvider,
   createInvoice,
@@ -49,6 +50,7 @@ export const billingRoutes = new Elysia({ prefix: "/billing" })
           ...body,
           hospitalId,
         });
+        await audit(user, "CREATE", "Invoice", invoice.id);
         return successResponse(invoice, "Invoice created successfully");
       } catch (err: any) {
         set.status = 400;
@@ -131,6 +133,7 @@ export const billingRoutes = new Elysia({ prefix: "/billing" })
           notes: body.notes,
           receivedBy: user?.email,
         });
+        await audit(user, "CREATE", "Payment", payment.id, { invoiceId: params.id });
         return successResponse(payment, "Payment recorded successfully");
       } catch (err: any) {
         set.status = 400;

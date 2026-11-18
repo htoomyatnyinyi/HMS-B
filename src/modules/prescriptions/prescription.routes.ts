@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
+import { audit } from "../../shared/audit";
 import {
   cancelPrescription,
   createPrescription,
@@ -40,6 +41,7 @@ export const prescriptionRoutes = new Elysia({ prefix: "/prescriptions" })
           doctorId: body.doctorId,
           userId: user?.userId,
         });
+        await audit(user, "CREATE", "Prescription", prescription.id);
         return successResponse(prescription, "Prescription created successfully");
       } catch (err: any) {
         set.status = 400;

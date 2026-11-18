@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, paginatedResponse, successResponse } from "../../shared/utils/response";
+import { audit } from "../../shared/audit";
 import {
   addPatientAllergy,
   addPatientCondition,
@@ -64,6 +65,7 @@ export const patientRoutes = new Elysia({ prefix: "/patients" })
           tenantId,
           hospitalId,
         });
+        await audit(user, "CREATE", "Patient", patient.id);
         return successResponse(patient, "Patient registered successfully");
       } catch (err: any) {
         set.status = 400;

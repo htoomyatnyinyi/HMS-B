@@ -68,6 +68,7 @@ for (const account of accounts) {
 const token = loginTokens[0];
 await expectStatus("/auth/users", loginTokens[0], 403);
 await request("/auth/users", { headers: { Authorization: `Bearer ${loginTokens[1]}` } });
+await request("/auth/audit-logs", { headers: { Authorization: `Bearer ${loginTokens[1]}` } });
 console.log("✅ RBAC admin endpoint protection");
 
 for (const path of checks) {

@@ -56,67 +56,56 @@ export async function getAdmissionById(id: string) {
 
 export async function admitPatient(input: AdmitPatientInput) {
   const admissionNo = generateAdmissionNo();
-
-  if (input.bedId) {
-    try {
-      await prisma.orm.public.Bed.where({ id: input.bedId }).update({
-        status: "OCCUPIED",
-      });
-    } catch {}
-  }
-
-  return await prisma.orm.public.Admission.create({
-    hospitalId: input.hospitalId,
-    patientId: input.patientId,
-    encounterId: input.encounterId,
-    bedId: input.bedId,
-    admissionNo,
-    status: "ADMITTED",
-    admittedAt: new Date(),
-    admissionReason: input.admissionReason,
-    attendingDoctorName: input.attendingDoctorName,
+  return await prisma.transaction(async (tx) => {
+    if (input.bedId) {
+      const bed = await tx.orm.public.Bed.where({ id: input.bedId }).first();
+      if (!bed) throw new Error("Bed not found");
+      if (bed.status !== "AVAILABLE") throw new Error("Selected bed is not available");
+      await tx.orm.public.Bed.where({ id: input.bedId }).update({ status: "OCCUPIED" });
+    }
+    return await tx.orm.public.Admission.create({
+      hospitalId: input.hospitalId,
+      patientId: input.patientId,
+      encounterId: input.encounterId,
+      bedId: input.bedId,
+      admissionNo,
+      status: "ADMITTED",
+      admittedAt: new Date(),
+      admissionReason: input.admissionReason,
+      attendingDoctorName: input.attendingDoctorName,
+    });
   });
 }
 
 export async function transferBed(input: TransferBedInput) {
-  if (input.fromBedId) {
-    try {
-      await prisma.orm.public.Bed.where({ id: input.fromBedId }).update({ status: "AVAILABLE" });
-    } catch {}
-  }
-
-  try {
-    await prisma.orm.public.Bed.where({ id: input.toBedId }).update({ status: "OCCUPIED" });
-  } catch {}
-
-  await prisma.orm.public.Admission.where({ id: input.admissionId }).update({
-    bedId: input.toBedId,
-    status: "TRANSFERRED",
-  });
-
-  return await prisma.orm.public.BedTransfer.create({
-    admissionId: input.admissionId,
-    fromBedId: input.fromBedId,
-    toBedId: input.toBedId,
-    reason: input.reason,
-    transferredAt: new Date(),
+  return await prisma.transaction(async (tx) => {
+    const toBed = await tx.orm.public.Bed.where({ id: input.toBedId }).first();
+    if (!toBed) throw new Error("Destination bed not found");
+    if (toBed.status !== "AVAILABLE") throw new Error("Destination bed is not available");
+    if (input.fromBedId) await tx.orm.public.Bed.where({ id: input.fromBedId }).update({ status: "AVAILABLE" });
+    await tx.orm.public.Bed.where({ id: input.toBedId }).update({ status: "OCCUPIED" });
+    await tx.orm.public.Admission.where({ id: input.admissionId }).update({ bedId: input.toBedId, status: "TRANSFERRED" });
+    return await tx.orm.public.BedTransfer.create({
+      admissionId: input.admissionId,
+      fromBedId: input.fromBedId,
+      toBedId: input.toBedId,
+      reason: input.reason,
+      transferredAt: new Date(),
+    });
   });
 }
 
 export async function dischargePatient(input: DischargePatientInput) {
-  const admission = await prisma.orm.public.Admission.where({ id: input.admissionId }).first();
-
-  if (admission?.bedId) {
-    try {
-      await prisma.orm.public.Bed.where({ id: admission.bedId }).update({ status: "AVAILABLE" });
-    } catch {}
-  }
-
-  return await prisma.orm.public.Admission.where({ id: input.admissionId }).update({
-    status: "DISCHARGED",
-    dischargedAt: new Date(),
-    dischargeDiagnosis: input.dischargeDiagnosis,
-    dischargeSummary: input.dischargeSummary,
+  return await prisma.transaction(async (tx) => {
+    const admission = await tx.orm.public.Admission.where({ id: input.admissionId }).first();
+    if (!admission) throw new Error("Admission not found");
+    if (admission.bedId) await tx.orm.public.Bed.where({ id: admission.bedId }).update({ status: "AVAILABLE" });
+    return await tx.orm.public.Admission.where({ id: input.admissionId }).update({
+      status: "DISCHARGED",
+      dischargedAt: new Date(),
+      dischargeDiagnosis: input.dischargeDiagnosis,
+      dischargeSummary: input.dischargeSummary,
+    });
   });
 }
 

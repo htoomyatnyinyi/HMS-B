@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { config } from "../../config/env";
 import { authMiddleware, jwtPlugin, requireAuth } from "../../shared/middleware/auth.middleware";
 import { errorResponse, successResponse } from "../../shared/utils/response";
+import { listAuditLogs } from "../../shared/audit";
 import {
   assignUserRole,
   authenticateUser,
@@ -101,6 +102,19 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
 
     const users = await listUsers(query.hospitalId || user?.hospitalId, query.search);
     return successResponse(users);
+  })
+  .get("/audit-logs", async ({ user, set }) => {
+    const auth = requireAuth(user, ["ADMIN", "SUPER_ADMIN"]);
+    if (!auth.authorized) {
+      set.status = 403;
+      return errorResponse(auth.reason || "Forbidden");
+    }
+    try {
+      return successResponse(await listAuditLogs(user?.hospitalId));
+    } catch (err: any) {
+      set.status = 500;
+      return errorResponse(err.message || "Failed to load audit logs");
+    }
   })
   .post(
     "/users",

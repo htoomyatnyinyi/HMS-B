@@ -10,11 +10,11 @@ export const sql = postgres(config.databaseUrl, {
 
 const tableColumnsCache = new Map<string, Set<string>>();
 
-async function getTableColumns(tableName: string): Promise<Set<string>> {
+async function getTableColumns(tableName: string, db: typeof sql = sql): Promise<Set<string>> {
   const cached = tableColumnsCache.get(tableName);
   if (cached) return cached;
 
-  const rows = await sql<{ column_name: string }[]>`
+  const rows = await db<{ column_name: string }[]>`
     SELECT column_name
     FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = ${tableName}
@@ -28,11 +28,11 @@ function toCamelCase(value: string): string {
   return value.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
-function createModelHandler(tableName: string) {
+function createModelHandler(tableName: string, db: typeof sql = sql) {
   return {
     async all() {
       try {
-        const rows = await sql`SELECT * FROM ${sql(tableName)}`;
+        const rows = await db`SELECT * FROM ${db(tableName)}`;
         return rows as any[];
       } catch (err: any) {
         console.warn(
@@ -48,7 +48,7 @@ function createModelHandler(tableName: string) {
         async all() {
           try {
             if (typeof conditions === "function") {
-              const rows = await sql`SELECT * FROM ${sql(tableName)}`;
+              const rows = await db`SELECT * FROM ${db(tableName)}`;
               return rows.filter((r) => {
                 try {
                   return (conditions as any)(r);
@@ -62,7 +62,7 @@ function createModelHandler(tableName: string) {
               ([_, v]) => v !== undefined,
             );
             if (entries.length === 0) {
-              const rows = await sql`SELECT * FROM ${sql(tableName)}`;
+              const rows = await db`SELECT * FROM ${db(tableName)}`;
               return rows as any[];
             }
 
@@ -70,14 +70,14 @@ function createModelHandler(tableName: string) {
             const keys = entries.map(([k]) => k);
             const values = entries.map(([_, v]) => v);
 
-            const rows = await sql`
-              SELECT * FROM ${sql(tableName)}
+            const rows = await db`
+              SELECT * FROM ${db(tableName)}
               WHERE ${keys.reduce(
                 (acc, key, i) => {
-                  const fragment = sql`${sql(key)} = ${values[i]}`;
-                  return i === 0 ? fragment : sql`${acc} AND ${fragment}`;
+                  const fragment = db`${db(key)} = ${values[i]}`;
+                  return i === 0 ? fragment : db`${acc} AND ${fragment}`;
                 },
-                sql``,
+                db``,
               )}
             `;
             return rows as any[];
@@ -116,15 +116,15 @@ function createModelHandler(tableName: string) {
             const condKeys = condEntries.map(([k]) => k);
             const condValues = condEntries.map(([_, v]) => v);
 
-            const result = await sql`
-              UPDATE ${sql(tableName)}
-              SET ${sql(updateObj)}
+            const result = await db`
+              UPDATE ${db(tableName)}
+              SET ${db(updateObj)}
               WHERE ${condKeys.reduce(
                 (acc, key, i) => {
-                  const fragment = sql`${sql(key)} = ${condValues[i]}`;
-                  return i === 0 ? fragment : sql`${acc} AND ${fragment}`;
+                  const fragment = db`${db(key)} = ${condValues[i]}`;
+                  return i === 0 ? fragment : db`${acc} AND ${fragment}`;
                 },
-                sql``,
+                db``,
               )}
               RETURNING *
             `;
@@ -143,7 +143,7 @@ function createModelHandler(tableName: string) {
     async create(data: Record<string, any>) {
       try {
         const id = data.id || crypto.randomUUID();
-        const columns = await getTableColumns(tableName);
+        const columns = await getTableColumns(tableName, db);
         const now = new Date();
         const normalizedData = Object.fromEntries(
           Object.entries(data).map(([key, value]) => {
@@ -165,8 +165,8 @@ function createModelHandler(tableName: string) {
           ),
         );
 
-        const result = await sql`
-          INSERT INTO ${sql(tableName)} ${sql(cleaned)}
+        const result = await db`
+          INSERT INTO ${db(tableName)} ${db(cleaned)}
           RETURNING *
         `;
         return result[0];
@@ -187,9 +187,26 @@ function createModelHandler(tableName: string) {
 
 const publicModels = new Proxy({} as Record<string, any>, {
   get(_target, prop: string) {
-    return createModelHandler(prop);
+    return createModelHandler(prop, sql);
   },
 });
+
+function createClient(db: typeof sql): DatabaseClient {
+  const models = new Proxy({} as Record<string, any>, {
+    get(_target, prop: string) {
+      return createModelHandler(prop, db);
+    },
+  });
+  return {
+    sql: db,
+    orm: { public: models },
+    async transaction<T>(callback: (tx: DatabaseClient) => Promise<T>): Promise<T> {
+      return await db.begin(async (transaction) => callback(createClient(transaction as unknown as typeof sql)));
+    },
+    async connect(): Promise<void> { await db`SELECT 1`; },
+    async close(): Promise<void> { await db.end({ timeout: 5 }); },
+  };
+}
 
 export interface DatabaseClient {
   sql: typeof sql;
@@ -209,7 +226,7 @@ export const prisma: DatabaseClient = {
   async transaction<T>(
     callback: (tx: DatabaseClient) => Promise<T>,
   ): Promise<T> {
-    return await callback(prisma);
+    return await sql.begin(async (transaction) => callback(createClient(transaction as unknown as typeof sql)));
   },
   async connect(): Promise<void> {
     await sql`SELECT 1`;
