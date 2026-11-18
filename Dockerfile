@@ -5,9 +5,14 @@ WORKDIR /app
 # Install dependencies
 FROM base AS dependencies
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN bun install --frozen-lockfile
 
-# Build / Development / Runner stage
+# Generate Prisma Client
+RUN bun x prisma generate
+
+# Runner stage
 FROM base AS runner
 WORKDIR /app
 
@@ -15,10 +20,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy node_modules and source code
+# Copy node_modules, generated prisma client, and source code
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json bun.lock ./
 COPY tsconfig.json ./
+COPY prisma.config.ts ./
 COPY prisma ./prisma
 COPY src ./src
 COPY scripts ./scripts
