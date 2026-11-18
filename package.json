@@ -8,6 +8,7 @@
     "build": "bun build src/index.ts --target=bun",
     "seed": "bun run scripts/seed.ts",
     "smoke": "bun run scripts/smoke.ts",
+    "workflow": "bun run scripts/workflow.ts",
     "db:validate": "bunx prisma validate",
     "db:format": "bunx prisma format",
     "db:generate": "bunx prisma generate",

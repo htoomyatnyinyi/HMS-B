@@ -24,6 +24,12 @@ RESTORE_CONFIRM=YES bash scripts/restore.sh backups/hms-YYYYMMDD-HHMMSS.dump
 docker compose exec api bun run smoke
 ```
 
+The optional write workflow creates test records through the API:
+
+```bash
+docker compose exec api bun run workflow
+```
+
 ## Database commands
 
 ```bash

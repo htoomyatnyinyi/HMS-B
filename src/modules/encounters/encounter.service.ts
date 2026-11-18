@@ -8,8 +8,7 @@ import type {
 
 export function generateEncounterNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `ENC-${date}-${rand}`;
+  return `ENC-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export async function listEncounters(params: {

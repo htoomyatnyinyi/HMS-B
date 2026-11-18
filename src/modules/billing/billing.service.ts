@@ -3,26 +3,22 @@ import type { CreateInvoiceInput, RecordPaymentInput, SubmitClaimInput } from ".
 
 export function generateInvoiceNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `INV-${date}-${rand}`;
+  return `INV-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export function generatePaymentNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `PAY-${date}-${rand}`;
+  return `PAY-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export function generateRefundNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `REF-${date}-${rand}`;
+  return `REF-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export function generateClaimNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `CLM-${date}-${rand}`;
+  return `CLM-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export async function listInvoices(hospitalId?: string, patientId?: string, status?: string) {

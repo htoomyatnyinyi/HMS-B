@@ -3,14 +3,12 @@ import type { CreateLabOrderInput, SubmitLabResultInput } from "./laboratory.typ
 
 export function generateRequestNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `LAB-${date}-${rand}`;
+  return `LAB-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export function generateAccessionNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `ACC-${date}-${rand}`;
+  return `ACC-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export async function listLabTests(laboratoryId?: string) {

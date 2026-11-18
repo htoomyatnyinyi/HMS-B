@@ -3,8 +3,7 @@ import type { CreatePrescriptionInput } from "./prescription.types";
 
 export function generatePrescriptionNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `RX-${date}-${rand}`;
+  return `RX-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export async function listPrescriptions(params: {

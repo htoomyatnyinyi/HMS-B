@@ -3,14 +3,12 @@ import type { CreateDispensationInput, CreateMedicineInput, StockMovementInput }
 
 export function generateDispensationNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `DSP-${date}-${rand}`;
+  return `DSP-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export function generateOrderNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `PO-${date}-${rand}`;
+  return `PO-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export async function listMedicines(pharmacyId?: string, search?: string) {

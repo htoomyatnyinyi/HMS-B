@@ -3,8 +3,7 @@ import type { AppointmentStatus, BookAppointmentInput } from "./appointment.type
 
 export function generateAppointmentNo(): string {
   const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  return `APT-${date}-${rand}`;
+  return `APT-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export async function listAppointments(params: {
