@@ -60,9 +60,15 @@ export async function getLabOrderById(id: string) {
       items = await prisma.orm.public.LabOrderItem.where({ labOrderId: id }).all();
     } catch {}
 
+    const detailedItems = await Promise.all(items.map(async (item: any) => ({
+      ...item,
+      specimen: await prisma.orm.public.Specimen.where({ labOrderItemId: item.id }).first(),
+      result: await prisma.orm.public.LabResult.where({ labOrderItemId: item.id }).first(),
+    })));
+
     return {
       ...order,
-      items,
+      items: detailedItems,
     };
   } catch {
     return null;

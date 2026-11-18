@@ -158,6 +158,8 @@ export async function listUsers(hospitalId?: string, search?: string) {
           u.email?.toLowerCase().includes(q),
       );
     }
+    const roles = await prisma.orm.public.Role.all();
+    const userRoles = await prisma.orm.public.UserRole.all();
     return filtered.map((u: any) => ({
       id: u.id,
       email: u.email,
@@ -167,6 +169,10 @@ export async function listUsers(hospitalId?: string, search?: string) {
       status: u.status,
       hospitalId: u.hospitalId,
       createdAt: u.createdAt,
+      roles: userRoles
+        .filter((userRole: any) => String(userRole.userId) === String(u.id))
+        .map((userRole: any) => roles.find((role: any) => String(role.id) === String(userRole.roleId))?.name)
+        .filter(Boolean),
     }));
   } catch {
     return [];

@@ -26,7 +26,10 @@ export async function listPrescriptions(params: {
       filtered = filtered.filter((p: any) => String(p.doctorId) === String(params.doctorId));
     }
 
-    return filtered;
+    return await Promise.all(filtered.map(async (prescription: any) => ({
+      ...prescription,
+      items: await prisma.orm.public.PrescriptionItem.where({ prescriptionId: prescription.id }).all(),
+    })));
   } catch (error) {
     console.error("List prescriptions error:", error);
     return [];
@@ -55,10 +58,19 @@ export async function getPrescriptionById(id: string) {
 export async function createPrescription(input: CreatePrescriptionInput) {
   const prescriptionNo = generatePrescriptionNo();
 
+  let doctorId = input.doctorId;
+  if (!doctorId && input.userId) {
+    const staff = await prisma.orm.public.Staff.where({ userId: input.userId }).first();
+    if (staff) {
+      const doctor = await prisma.orm.public.Doctor.where({ staffId: staff.id }).first();
+      doctorId = doctor?.id;
+    }
+  }
+
   const prescription = await prisma.orm.public.Prescription.create({
     patientId: input.patientId,
     encounterId: input.encounterId,
-    doctorId: input.doctorId,
+    doctorId,
     prescriptionNo,
     status: "ACTIVE",
     prescribedAt: new Date(),

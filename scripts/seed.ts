@@ -677,6 +677,14 @@ async function main() {
         is_active: true,
       });
       medicines.push(med);
+      await prisma.orm.public.StockItem.create({
+        id: uuid(),
+        location_id: inventoryLocation.id,
+        medicine_id: med.id,
+        batch_no: "OPENING-2026",
+        quantity: 500,
+        unit_cost: 100,
+      });
     }
 
     // Stock movements (opening stock)

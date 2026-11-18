@@ -17,7 +17,20 @@ export async function listAdmissions(hospitalId?: string, status?: string) {
     if (status) {
       filtered = filtered.filter((a: any) => a.status === status);
     }
-    return filtered;
+    const patients = await prisma.orm.public.Patient.all();
+    const beds = await prisma.orm.public.Bed.all();
+    const wards = await prisma.orm.public.Ward.all();
+    return filtered.map((admission: any) => {
+      const patient = patients.find((item: any) => String(item.id) === String(admission.patientId));
+      const bed = beds.find((item: any) => String(item.id) === String(admission.bedId));
+      const ward = wards.find((item: any) => String(item.id) === String(bed?.wardId));
+      return {
+        ...admission,
+        patientName: patient ? `${patient.firstName} ${patient.lastName}` : undefined,
+        bedNo: bed?.bedNo,
+        wardName: ward?.name,
+      };
+    });
   } catch (error) {
     console.error("List admissions error:", error);
     return [];

@@ -30,7 +30,13 @@ export async function listMedicines(pharmacyId?: string, search?: string) {
           m.code?.toLowerCase().includes(q),
       );
     }
-    return filtered;
+    const stockItems = await prisma.orm.public.StockItem.all();
+    return filtered.map((medicine: any) => ({
+      ...medicine,
+      stockQuantity: stockItems
+        .filter((item: any) => String(item.medicineId) === String(medicine.id))
+        .reduce((total: number, item: any) => total + Number(item.quantity || 0), 0),
+    }));
   } catch (error) {
     console.error("List medicines error:", error);
     return [];
@@ -43,6 +49,13 @@ export async function getMedicineById(id: string) {
   } catch {
     return null;
   }
+}
+
+export async function getDefaultPharmacy(hospitalId?: string) {
+  const pharmacies = await prisma.orm.public.Pharmacy.all();
+  return pharmacies.find((pharmacy: any) =>
+    !hospitalId || String(pharmacy.hospitalId) === String(hospitalId),
+  ) || null;
 }
 
 export async function createMedicine(input: CreateMedicineInput) {
@@ -111,6 +124,27 @@ export async function getDispensationById(id: string) {
 export async function createDispensation(input: CreateDispensationInput) {
   const dispensationNo = generateDispensationNo();
 
+  const pharmacy = await prisma.orm.public.Pharmacy.where({ id: input.pharmacyId }).first();
+  const location = pharmacy
+    ? await prisma.orm.public.InventoryLocation.where({ hospitalId: pharmacy.hospitalId }).first()
+    : null;
+  if (!location) throw new Error("No inventory location is configured for this pharmacy");
+
+  const stockAllocations: Array<{ stockItem: any; quantity: number; medicineCode: string }> = [];
+  for (const item of input.items) {
+    const prescriptionItem = await prisma.orm.public.PrescriptionItem.where({ id: item.prescriptionItemId }).first();
+    if (!prescriptionItem) throw new Error("Prescription item not found");
+    const medicine = await prisma.orm.public.Medicine.where({ id: prescriptionItem.medicineId }).first();
+    if (!medicine) throw new Error("Medicine not found for prescription item");
+    const stockItems = await prisma.orm.public.StockItem.where({
+      locationId: location.id,
+      medicineId: medicine.id,
+    }).all();
+    const stockItem = stockItems.find((candidate: any) => Number(candidate.quantity || 0) >= item.quantity);
+    if (!stockItem) throw new Error(`Insufficient stock for ${medicine.name}`);
+    stockAllocations.push({ stockItem, quantity: item.quantity, medicineCode: medicine.code });
+  }
+
   const dispensation = await prisma.orm.public.Dispensation.create({
     pharmacyId: input.pharmacyId,
     prescriptionId: input.prescriptionId,
@@ -122,16 +156,26 @@ export async function createDispensation(input: CreateDispensationInput) {
 
   const createdItems = [];
   for (const item of input.items) {
-    try {
-      const dispensedItem = await prisma.orm.public.DispensedItem.create({
-        dispensationId: dispensation.id,
-        prescriptionItemId: item.prescriptionItemId,
-        quantity: item.quantity,
-      });
-      createdItems.push(dispensedItem);
-    } catch (err) {
-      console.error("Error creating dispensed item:", err);
-    }
+    const dispensedItem = await prisma.orm.public.DispensedItem.create({
+      dispensationId: dispensation.id,
+      prescriptionItemId: item.prescriptionItemId,
+      quantity: item.quantity,
+    });
+    createdItems.push(dispensedItem);
+  }
+
+  for (const allocation of stockAllocations) {
+    await prisma.orm.public.StockItem.where({ id: allocation.stockItem.id }).update({
+      quantity: Number(allocation.stockItem.quantity) - allocation.quantity,
+    });
+    await recordStockMovement({
+      locationId: location.id,
+      medicineCode: allocation.medicineCode,
+      batchNo: allocation.stockItem.batchNo,
+      movementType: "DISPENSE",
+      quantity: allocation.quantity,
+      referenceNo: dispensationNo,
+    });
   }
 
   try {

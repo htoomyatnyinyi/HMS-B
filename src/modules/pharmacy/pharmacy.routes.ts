@@ -4,6 +4,7 @@ import { errorResponse, successResponse } from "../../shared/utils/response";
 import {
   createDispensation,
   createMedicine,
+  getDefaultPharmacy,
   createPurchaseOrder,
   createSupplier,
   getDispensationById,
@@ -54,7 +55,14 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
       }
 
       try {
-        const medicine = await createMedicine(body);
+        const pharmacy = body.pharmacyId
+          ? { id: body.pharmacyId }
+          : await getDefaultPharmacy(user?.hospitalId);
+        if (!pharmacy) {
+          set.status = 400;
+          return errorResponse("No pharmacy is configured for this hospital");
+        }
+        const medicine = await createMedicine({ ...body, pharmacyId: pharmacy.id });
         return successResponse(medicine, "Medicine created successfully");
       } catch (err: any) {
         set.status = 400;
@@ -63,7 +71,7 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
     },
     {
       body: t.Object({
-        pharmacyId: t.String({ minLength: 1 }),
+        pharmacyId: t.Optional(t.String()),
         code: t.String({ minLength: 1 }),
         name: t.String({ minLength: 1 }),
         genericName: t.Optional(t.String()),
@@ -151,8 +159,16 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
       }
 
       try {
+        const pharmacy = body.pharmacyId
+          ? { id: body.pharmacyId }
+          : await getDefaultPharmacy(user?.hospitalId);
+        if (!pharmacy) {
+          set.status = 400;
+          return errorResponse("No pharmacy is configured for this hospital");
+        }
         const dispensation = await createDispensation({
           ...body,
+          pharmacyId: pharmacy.id,
           pharmacistName: user?.email,
         });
         return successResponse(dispensation, "Medicines dispensed successfully");
@@ -163,7 +179,7 @@ export const pharmacyRoutes = new Elysia({ prefix: "/pharmacy" })
     },
     {
       body: t.Object({
-        pharmacyId: t.String({ minLength: 1 }),
+        pharmacyId: t.Optional(t.String()),
         prescriptionId: t.String({ minLength: 1 }),
         items: t.Array(
           t.Object({

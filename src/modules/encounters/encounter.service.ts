@@ -35,7 +35,21 @@ export async function listEncounters(params: {
       filtered = filtered.filter((e: any) => e.status === params.status);
     }
 
-    return filtered;
+    const patients = await prisma.orm.public.Patient.all();
+    const doctors = await prisma.orm.public.Doctor.all();
+    const staff = await prisma.orm.public.Staff.all();
+    const users = await prisma.orm.public.User.all();
+    return filtered.map((encounter: any) => {
+      const patient = patients.find((item: any) => String(item.id) === String(encounter.patientId));
+      const doctor = doctors.find((item: any) => String(item.id) === String(encounter.doctorId));
+      const doctorStaff = staff.find((item: any) => String(item.id) === String(doctor?.staffId));
+      const doctorUser = users.find((item: any) => String(item.id) === String(doctorStaff?.userId));
+      return {
+        ...encounter,
+        patientName: patient ? `${patient.firstName} ${patient.lastName}` : undefined,
+        doctorName: doctorUser ? `${doctorUser.firstName} ${doctorUser.lastName}` : undefined,
+      };
+    });
   } catch (error) {
     console.error("List encounters error:", error);
     return [];

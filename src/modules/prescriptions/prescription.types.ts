@@ -16,4 +16,5 @@ export interface CreatePrescriptionInput {
   doctorId?: string;
   notes?: string;
   items: PrescriptionItemInput[];
+  userId?: string;
 }

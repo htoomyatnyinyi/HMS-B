@@ -37,7 +37,8 @@ export const prescriptionRoutes = new Elysia({ prefix: "/prescriptions" })
       try {
         const prescription = await createPrescription({
           ...body,
-          doctorId: body.doctorId || user?.userId,
+          doctorId: body.doctorId,
+          userId: user?.userId,
         });
         return successResponse(prescription, "Prescription created successfully");
       } catch (err: any) {

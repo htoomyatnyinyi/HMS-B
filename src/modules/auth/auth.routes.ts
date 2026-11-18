@@ -102,6 +102,38 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     const users = await listUsers(query.hospitalId || user?.hospitalId, query.search);
     return successResponse(users);
   })
+  .post(
+    "/users",
+    async ({ body, user, set }) => {
+      const auth = requireAuth(user, ["ADMIN", "SUPER_ADMIN"]);
+      if (!auth.authorized) {
+        set.status = 403;
+        return errorResponse(auth.reason || "Forbidden");
+      }
+      try {
+        const created = await registerUser({
+          ...body,
+          tenantId: user!.tenantId,
+          hospitalId: user!.hospitalId,
+        });
+        return successResponse(created, "Staff account created successfully");
+      } catch (err: any) {
+        set.status = 400;
+        return errorResponse(err.message || "Failed to create staff account");
+      }
+    },
+    {
+      body: t.Object({
+        email: t.String({ format: "email" }),
+        password: t.String({ minLength: 6 }),
+        firstName: t.String({ minLength: 1 }),
+        lastName: t.String({ minLength: 1 }),
+        username: t.Optional(t.String()),
+        phone: t.Optional(t.String()),
+        role: t.Optional(t.String()),
+      }),
+    },
+  )
   .put(
     "/users/:id",
     async ({ params, body, user, set }) => {

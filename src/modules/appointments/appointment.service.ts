@@ -35,7 +35,21 @@ export async function listAppointments(params: {
       filtered = filtered.filter((a: any) => new Date(a.startAt).toISOString().slice(0, 10) === targetDate);
     }
 
-    return filtered;
+    const patients = await prisma.orm.public.Patient.all();
+    const doctors = await prisma.orm.public.Doctor.all();
+    const staff = await prisma.orm.public.Staff.all();
+    const users = await prisma.orm.public.User.all();
+    return filtered.map((appointment: any) => {
+      const patient = patients.find((item: any) => String(item.id) === String(appointment.patientId));
+      const doctor = doctors.find((item: any) => String(item.id) === String(appointment.doctorId));
+      const doctorStaff = staff.find((item: any) => String(item.id) === String(doctor?.staffId));
+      const doctorUser = users.find((item: any) => String(item.id) === String(doctorStaff?.userId));
+      return {
+        ...appointment,
+        patientName: patient ? `${patient.firstName} ${patient.lastName}` : undefined,
+        doctorName: doctorUser ? `${doctorUser.firstName} ${doctorUser.lastName}` : undefined,
+      };
+    });
   } catch (error) {
     console.error("List appointments error:", error);
     return [];
